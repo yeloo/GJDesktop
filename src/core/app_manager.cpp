@@ -98,8 +98,8 @@ bool AppManager::initialize() {
 }
 
 bool AppManager::initializeLogger() {
-    // Logger 单例管理自己，直接调用 getInstance 
-    m_logger.reset(&Logger::getInstance());
+    // Logger 单例，直接获取引用并存储指针
+    m_logger = &Logger::getInstance();
     return m_logger != nullptr;
 }
 

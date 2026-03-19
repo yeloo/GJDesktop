@@ -65,7 +65,7 @@ private:
     void restorePartitions();
     
     // 成员变量
-    std::unique_ptr<Logger> m_logger;
+    Logger* m_logger;  // 单例，不需要 unique_ptr
     std::unique_ptr<ConfigManager> m_configManager;
     std::unique_ptr<FileOrganizer> m_fileOrganizer;
     std::unique_ptr<TrayManager> m_trayManager;
