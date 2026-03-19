@@ -38,6 +38,9 @@ jobs:
   build:
     name: Build on Windows (MSVC + Qt6)
     runs-on: windows-latest
+    # GitHub Actions 需要显式授予权限才能创建 Release
+    permissions:
+      contents: write    # 允许创建/更新 Release 和上传 assets
 
     env:
       BUILD_TYPE: Release
@@ -297,9 +300,7 @@ jobs:
           files: ${{ env.ARTIFACT_NAME }}.zip
           draft: false
           prerelease: true                # 开发版始终标记为预发布
-          replace_assets: true            # 覆盖已有资源文件，避免重复
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # overwrite_files: true 默认值，省略即可（会自动覆盖同名 assets）
 
       # ----------------------------------------------------------
       # 情况 2: tag push (v*) → 创建正式发布版
@@ -327,5 +328,3 @@ jobs:
           files: ${{ env.ARTIFACT_NAME }}.zip
           draft: false
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
