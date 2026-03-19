@@ -127,23 +127,87 @@ jobs:
           }
 
       # ----------------------------------------------------------
-      # 7. windeployqt - 自动收集 Qt 运行库 (使用环境变量)
+      # 7. windeployqt - 自动收集 Qt 运行库
       # ----------------------------------------------------------
       - name: Deploy Qt dependencies (windeployqt)
         run: |
-          $qtBin = "${{ env.Qt6_DIR }}/bin"
-          & "$qtBin/windeployqt.exe" `
-            "${{ env.CCDESK_EXE_PATH }}" `
+          # 严格检查：关键环境变量存在性验证
+          Write-Host "=== 路径验证开始 ==="
+          
+          # 检查 1: QT_ROOT_DIR 存在
+          if (-not $env:QT_ROOT_DIR) {
+            Write-Error "❌ 环境变量 QT_ROOT_DIR 未定义！"
+            exit 1
+          }
+          Write-Host "✓ QT_ROOT_DIR = $env:QT_ROOT_DIR"
+          
+          # 检查 2: CCDESK_EXE_PATH 存在
+          if (-not $env:CCDESK_EXE_PATH) {
+            Write-Error "❌ 环境变量 CCDESK_EXE_PATH 未定义！"
+            exit 1
+          }
+          Write-Host "✓ CCDESK_EXE_PATH = $env:CCDESK_EXE_PATH"
+          
+          # 检查 3: CCDesk.exe 文件存在
+          if (-not (Test-Path $env:CCDESK_EXE_PATH)) {
+            Write-Error "❌ CCDesk.exe 文件不存在: $env:CCDESK_EXE_PATH"
+            exit 1
+          }
+          Write-Host "✓ CCDesk.exe 文件存在"
+          
+          # 构建 windeployqt 的完整路径
+          $windeployqtPath = "$env:QT_ROOT_DIR\bin\windeployqt.exe"
+          
+          # 检查 4: windeployqt.exe 存在
+          if (-not (Test-Path $windeployqtPath)) {
+            Write-Error "❌ windeployqt.exe 不存在: $windeployqtPath"
+            Write-Host ""
+            Write-Host "Qt bin 目录内容："
+            $qtBinDir = "$env:QT_ROOT_DIR\bin"
+            if (Test-Path $qtBinDir) {
+              Get-ChildItem $qtBinDir | Select-Object Name
+            } else {
+              Write-Error "Qt bin 目录本身不存在: $qtBinDir"
+            }
+            exit 1
+          }
+          Write-Host "✓ windeployqt.exe 存在: $windeployqtPath"
+          Write-Host "=== 路径验证完成 ==="
+          Write-Host ""
+          
+          # 执行 windeployqt
+          Write-Host "正在运行 windeployqt..."
+          & $windeployqtPath `
+            $env:CCDESK_EXE_PATH `
             --release `
             --no-translations `
             --no-system-d3d-compiler `
             --no-opengl-sw `
             --dir "deploy"
-
-          # 将可执行文件也复制进 deploy 目录
-          Copy-Item "${{ env.CCDESK_EXE_PATH }}" -Destination "deploy/"
-          Write-Host "✓ Deploy directory contents:"
-          Get-ChildItem "deploy" -Recurse | Select-Object FullName
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "❌ windeployqt 执行失败，退出码: $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+          Write-Host "✓ windeployqt 执行成功"
+          
+          # 复制 CCDesk.exe 到 deploy 目录
+          Write-Host ""
+          Write-Host "正在复制 CCDesk.exe 到 deploy 目录..."
+          Copy-Item $env:CCDESK_EXE_PATH -Destination "deploy/"
+          Write-Host "✓ CCDesk.exe 复制完成"
+          
+          # 打印 deploy 目录内容
+          Write-Host ""
+          Write-Host "Deploy 目录最终内容:"
+          if (Test-Path "deploy") {
+            Get-ChildItem "deploy" -Recurse | Select-Object FullName | Format-Table -AutoSize
+            $deploySize = (Get-ChildItem "deploy" -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
+            Write-Host "✓ Deploy 目录总大小: $([math]::Round($deploySize, 2)) MB"
+          } else {
+            Write-Error "❌ deploy 目录不存在！"
+            exit 1
+          }
 
       # ----------------------------------------------------------
       # 8. 写入版本信息文件（便于用户识别构建来源）
