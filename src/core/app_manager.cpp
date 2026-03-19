@@ -180,7 +180,7 @@ void AppManager::restorePartitions() {
 }
 
 Logger* AppManager::getLogger() const {
-    return m_logger.get();
+    return m_logger;
 }
 
 ConfigManager* AppManager::getConfigManager() const {
