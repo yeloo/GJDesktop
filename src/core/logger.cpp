@@ -8,13 +8,11 @@ namespace fs = std::filesystem;
 
 namespace ccdesk::core {
 
-static Logger* g_logger = nullptr;
+// 静态单例实例（使用 Meyer's Singleton Pattern）
 
 Logger& Logger::getInstance() {
-    if (!g_logger) {
-        g_logger = new Logger();
-    }
-    return *g_logger;
+    static Logger instance;
+    return instance;
 }
 
 Logger::Logger()

@@ -13,14 +13,11 @@ namespace fs = std::filesystem;
 
 namespace ccdesk::core {
 
-// 静态单例实例
-static AppManager* g_instance = nullptr;
+// 静态单例实例（使用 Meyer's Singleton Pattern）
 
 AppManager& AppManager::getInstance() {
-    if (!g_instance) {
-        g_instance = new AppManager();
-    }
-    return *g_instance;
+    static AppManager instance;
+    return instance;
 }
 
 AppManager::AppManager()
@@ -218,7 +215,9 @@ void AppManager::cleanup() {
     m_trayManager.reset();
     m_fileOrganizer.reset();
     m_configManager.reset();
-    m_logger.reset();
+    // m_logger 是单例 raw pointer，不需要手动清理
+    // 单例的生命周期由程序管理，不应在 AppManager 中销毁
+    m_logger = nullptr;
 }
 
 } // namespace ccdesk::core

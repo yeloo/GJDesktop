@@ -120,7 +120,149 @@ bool ConfigManager::parseConfig(const std::string& content) {
         }
     }
     
-    // 若解析失败，应用默认配置并记录警告
+    // 解析分区数组 - 在 "partitions": [ 和 ] 之间提取
+    size_t partitionsStart = content.find("\"partitions\"");
+    if (partitionsStart != std::string::npos) {
+        size_t arrayStart = content.find("[", partitionsStart);
+        size_t arrayEnd = content.find("]", arrayStart);
+        if (arrayStart != std::string::npos && arrayEnd != std::string::npos) {
+            std::string partitionsStr = content.substr(arrayStart + 1, arrayEnd - arrayStart - 1);
+            
+            // 简单的对象提取：逐个 { } 对
+            size_t objStart = 0;
+            while ((objStart = partitionsStr.find("{", objStart)) != std::string::npos) {
+                size_t objEnd = partitionsStr.find("}", objStart);
+                if (objEnd == std::string::npos) break;
+                
+                std::string objStr = partitionsStr.substr(objStart, objEnd - objStart + 1);
+                
+                // 提取 id, name, targetPath
+                PartitionConfig pc;
+                
+                // 提取 id
+                size_t idPos = objStr.find("\"id\"");
+                if (idPos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", idPos);
+                    size_t quoteStart = objStr.find("\"", colonPos);
+                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
+                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+                        pc.id = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+                    }
+                }
+                
+                // 提取 name
+                size_t namePos = objStr.find("\"name\"");
+                if (namePos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", namePos);
+                    size_t quoteStart = objStr.find("\"", colonPos);
+                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
+                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+                        pc.name = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+                    }
+                }
+                
+                // 提取 targetPath
+                size_t pathPos = objStr.find("\"targetPath\"");
+                if (pathPos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", pathPos);
+                    size_t quoteStart = objStr.find("\"", colonPos);
+                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
+                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+                        pc.targetPath = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+                    }
+                }
+                
+                if (!pc.id.empty() && !pc.name.empty()) {
+                    m_partitions.push_back(pc);
+                }
+                
+                objStart = objEnd + 1;
+            }
+        }
+    }
+    
+    // 解析规则数组 - 同上
+    size_t rulesStart = content.find("\"rules\"");
+    if (rulesStart != std::string::npos) {
+        size_t arrayStart = content.find("[", rulesStart);
+        size_t arrayEnd = content.find("]", arrayStart);
+        if (arrayStart != std::string::npos && arrayEnd != std::string::npos) {
+            std::string rulesStr = content.substr(arrayStart + 1, arrayEnd - arrayStart - 1);
+            
+            size_t objStart = 0;
+            while ((objStart = rulesStr.find("{", objStart)) != std::string::npos) {
+                size_t objEnd = rulesStr.find("}", objStart);
+                if (objEnd == std::string::npos) break;
+                
+                std::string objStr = rulesStr.substr(objStart, objEnd - objStart + 1);
+                
+                // 提取规则字段
+                OrganizeRule rule;
+                
+                // 提取 id
+                size_t idPos = objStr.find("\"id\"");
+                if (idPos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", idPos);
+                    size_t quoteStart = objStr.find("\"", colonPos);
+                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
+                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+                        rule.id = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+                    }
+                }
+                
+                // 提取 name
+                size_t namePos = objStr.find("\"name\"");
+                if (namePos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", namePos);
+                    size_t quoteStart = objStr.find("\"", colonPos);
+                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
+                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+                        rule.name = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+                    }
+                }
+                
+                // 提取 extensions
+                size_t extPos = objStr.find("\"extensions\"");
+                if (extPos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", extPos);
+                    size_t quoteStart = objStr.find("\"", colonPos);
+                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
+                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+                        rule.extensions = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+                    }
+                }
+                
+                // 提取 targetPath
+                size_t pathPos = objStr.find("\"targetPath\"");
+                if (pathPos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", pathPos);
+                    size_t quoteStart = objStr.find("\"", colonPos);
+                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
+                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+                        rule.targetPath = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+                    }
+                }
+                
+                // 提取 enabled (布尔值)
+                size_t enabledPos = objStr.find("\"enabled\"");
+                if (enabledPos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", enabledPos);
+                    size_t truePos = objStr.find("true", colonPos);
+                    rule.enabled = (truePos != std::string::npos && truePos < colonPos + 20);
+                } else {
+                    rule.enabled = true;  // 默认启用
+                }
+                
+                if (!rule.id.empty() && !rule.name.empty()) {
+                    m_rules.push_back(rule);
+                }
+                
+                objStart = objEnd + 1;
+            }
+        }
+    }
+    
+    // 若解析后仍然没有规则或分区，应用默认配置
     if (m_rules.empty()) {
         Logger::getInstance().warning("ConfigManager: No rules found during parse, applying defaults");
         createDefaultConfig();
@@ -128,7 +270,12 @@ bool ConfigManager::parseConfig(const std::string& content) {
     
     if (m_partitions.empty()) {
         Logger::getInstance().warning("ConfigManager: No partitions found during parse, applying defaults");
-        createDefaultConfig();
+        // 注意：仅创建默认分区，不再创建默认规则（避免重复）
+        PartitionConfig partition1;
+        partition1.id = "partition_1";
+        partition1.name = "Documents";
+        partition1.targetPath = ".\\Documents";
+        m_partitions.push_back(partition1);
     }
     
     return true;
