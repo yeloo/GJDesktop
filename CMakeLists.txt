@@ -53,4 +53,17 @@ target_include_directories(CCDesk PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 set_target_properties(CCDesk PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    # 显式指定 Multi-Config (如 MSVC) 生成器的配置后缀
+    # 这确保输出到 build/bin (而不是 build/bin/Release)
+    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
+
+# 针对 Multi-Config 生成器 (MSVC)，防止自动添加配置子目录
+if(CMAKE_CONFIGURATION_TYPES)
+    foreach(OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES})
+        string(TOUPPER ${OUTPUTCONFIG} OUTPUTCONFIG)
+        set_target_properties(CCDesk PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} "${CMAKE_BINARY_DIR}/bin"
+        )
+    endforeach()
+endif()

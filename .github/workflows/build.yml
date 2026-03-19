@@ -98,26 +98,42 @@ jobs:
           cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
 
       # ----------------------------------------------------------
-      # 6. 验证可执行文件是否存在
+      # 6. 递归搜索可执行文件 + 写入环境变量 (稳妥方案)
       # ----------------------------------------------------------
-      - name: Verify executable
+      - name: Find and verify executable
         run: |
-          if (Test-Path "build/bin/CCDesk.exe") {
-            $size = (Get-Item "build/bin/CCDesk.exe").Length / 1MB
-            Write-Host "✓ CCDesk.exe found, size: $([math]::Round($size, 2)) MB"
+          # 递归搜索 CCDesk.exe
+          $exePath = Get-ChildItem -Path "build" -Recurse -Filter "CCDesk.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          
+          if ($exePath) {
+            $fullPath = $exePath.FullName
+            $size = $exePath.Length / 1MB
+            Write-Host "✓ CCDesk.exe found at: $fullPath"
+            Write-Host "✓ Size: $([math]::Round($size, 2)) MB"
+            
+            # 写入环境变量供后续步骤使用
+            "CCDESK_EXE_PATH=$fullPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            Write-Host "✓ Environment variable CCDESK_EXE_PATH set"
           } else {
-            Write-Error "✗ CCDesk.exe not found!"
+            Write-Error "✗ CCDesk.exe not found in build directory!"
+            Write-Host ""
+            Write-Host "Build directory structure:"
+            if (Test-Path "build") {
+              Get-ChildItem -Path "build" -Recurse | Select-Object FullName | Format-Table -AutoSize
+            } else {
+              Write-Error "build directory does not exist!"
+            }
             exit 1
           }
 
       # ----------------------------------------------------------
-      # 7. windeployqt - 自动收集 Qt 运行库
+      # 7. windeployqt - 自动收集 Qt 运行库 (使用环境变量)
       # ----------------------------------------------------------
       - name: Deploy Qt dependencies (windeployqt)
         run: |
           $qtBin = "${{ env.Qt6_DIR }}/bin"
           & "$qtBin/windeployqt.exe" `
-            "build/bin/CCDesk.exe" `
+            "${{ env.CCDESK_EXE_PATH }}" `
             --release `
             --no-translations `
             --no-system-d3d-compiler `
@@ -125,7 +141,7 @@ jobs:
             --dir "deploy"
 
           # 将可执行文件也复制进 deploy 目录
-          Copy-Item "build/bin/CCDesk.exe" -Destination "deploy/"
+          Copy-Item "${{ env.CCDESK_EXE_PATH }}" -Destination "deploy/"
           Write-Host "✓ Deploy directory contents:"
           Get-ChildItem "deploy" -Recurse | Select-Object FullName
 
