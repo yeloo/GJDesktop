@@ -316,7 +316,7 @@ bool SettingsDialog::setStartupRegistry(bool enable) {
     } catch (const std::exception& e) {
         Logger::getInstance().error("SettingsDialog: Exception in setStartupRegistry: " + 
                                    std::string(e.what()));
-        QMessageBox::warning(this, "Error", "Exception occurred: " + std::string(e.what()));
+        QMessageBox::warning(this, "Error", QString::fromStdString("Exception occurred: " + std::string(e.what())));
         return false;
     }
 #else

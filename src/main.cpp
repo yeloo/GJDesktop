@@ -1,5 +1,5 @@
 #include <QApplication>
-#include "src/core/app_manager.h"
+#include "core/app_manager.h"
 
 int main(int argc, char* argv[]) {
     // 创建Qt应用

@@ -98,7 +98,8 @@ bool AppManager::initialize() {
 }
 
 bool AppManager::initializeLogger() {
-    m_logger = std::make_unique<Logger>();
+    // Logger 单例管理自己，直接调用 getInstance 
+    m_logger.reset(&Logger::getInstance());
     return m_logger != nullptr;
 }
 

@@ -106,7 +106,7 @@ bool FileOrganizer::matchesRule(const std::string& extension,
     return false;
 }
 
-const FileOrganizer::OrganizeRule* FileOrganizer::findMatchingRule(
+const ccdesk::core::OrganizeRule* FileOrganizer::findMatchingRule(
     const std::string& fileName) const {
     std::string ext = getFileExtension(fileName);
     
