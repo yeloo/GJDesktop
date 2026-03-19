@@ -258,22 +258,27 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      # ----------------------------------------------------------
+# ----------------------------------------------------------
       # 11. 多层级发布策略
       # ----------------------------------------------------------
       # 情况 1: 分支 push (main/master) → 创建/更新开发预发布版
       # ----------------------------------------------------------
       - name: Create/Update Dev Release (on branch push)
-        if: github.ref_type == 'branch' && github.event_name == 'push'
+        # 显式匹配 main/master 分支的 push 操作
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: softprops/action-gh-release@v2
         with:
           name: CCDesk Dev Build
           tag_name: dev-build
+          # 显式绑定到当前提交，确保发布与 push 的提交一致
+          target_commitish: ${{ github.sha }}
+          # 显式传入 GitHub Token，避免权限问题
+          token: ${{ secrets.GITHUB_TOKEN }}
           body: |
             ## CCDesk 开发构建版
             
             **这是一个自动生成的开发版本，包含最新的代码变更。**
-            
+
             ### 重要说明
             - 🚧 **开发版本**：此版本包含正在开发中的功能，可能不稳定
             - ⚠️ **仅供测试**：请勿在生产环境中使用
