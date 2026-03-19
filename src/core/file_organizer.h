@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <atomic>
 #include "organize_result.h"
 #include "config_manager.h"
 
@@ -55,10 +56,17 @@ public:
     // 返回执行结果汇总
     OrganizeSummary executeOrganize();
     
+    // 取消整理操作（线程安全）
+    void cancelOrganize();
+    
+    // 检查是否已取消
+    bool isCancelled() const;
+
 private:
     std::string m_desktopPath;
     std::vector<OrganizeRule> m_rules;
     std::vector<OrganizePreviewItem> m_currentPreview;
+    std::atomic<bool> m_isCancelled{false};  // 取消标志
     
     // 根据文件名获取扩展名
     std::string getFileExtension(const std::string& fileName) const;

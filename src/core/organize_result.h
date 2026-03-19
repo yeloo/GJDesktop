@@ -30,15 +30,29 @@ struct OrganizeSummary {
     int skippedConflictCount; // 冲突跳过数
     int failedCount;          // 失败数
     int noRuleCount;          // 无匹配规则数
+    bool cancelled;           // 是否被用户取消
+    size_t cancelledAtItem;   // 取消时的项目序号（1-based）
+    size_t totalItems;        // 总项目数
     
     std::vector<OrganizeResult> details; // 详细结果列表
     
     OrganizeSummary() 
-        : movedCount(0), skippedConflictCount(0), failedCount(0), noRuleCount(0) {}
+        : movedCount(0), skippedConflictCount(0), failedCount(0), noRuleCount(0),
+          cancelled(false), cancelledAtItem(0), totalItems(0) {}
     
     // 获取总处理文件数
     int getTotalProcessed() const {
         return movedCount + skippedConflictCount + failedCount + noRuleCount;
+    }
+    
+    // 获取总项目数（包括取消后未处理的）
+    size_t getTotalItems() const {
+        return totalItems > 0 ? totalItems : details.size();
+    }
+    
+    // 是否已完成所有项目（未取消）
+    bool isCompleted() const {
+        return !cancelled && getTotalProcessed() >= getTotalItems();
     }
 };
 

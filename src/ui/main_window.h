@@ -45,6 +45,9 @@ private slots:
     // 一键整理按钮
     void onOrganizeClicked();
     
+    // 取消整理按钮
+    void onCancelOrganizeClicked();
+    
     // 预览对话框确认按钮
     void onPreviewConfirmed();
     
@@ -78,6 +81,9 @@ private:
     
     // 设置对话框
     SettingsDialog* m_settingsDialog;
+    
+    // 整理状态
+    bool m_isOrganizing;  // 是否正在整理中
     
     // 初始化UI
     void initializeUI();

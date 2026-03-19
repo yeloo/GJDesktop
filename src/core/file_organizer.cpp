@@ -200,15 +200,39 @@ bool FileOrganizer::moveFile(const std::string& sourcePath,
     }
 }
 
+void FileOrganizer::cancelOrganize() {
+    m_isCancelled.store(true, std::memory_order_release);
+    Logger::getInstance().info("FileOrganizer: Cancel requested");
+}
+
+bool FileOrganizer::isCancelled() const {
+    return m_isCancelled.load(std::memory_order_acquire);
+}
+
 OrganizeSummary FileOrganizer::executeOrganize() {
     OrganizeSummary summary;
+    
+    // 重置取消标志
+    m_isCancelled.store(false, std::memory_order_release);
     
     Logger::getInstance().info("FileOrganizer: Starting real execution...");
     
     // 重新生成预览以确保数据最新
     auto previewItems = generatePreview();
     
-    for (const auto& item : previewItems) {
+    // 在开始每个文件前检查取消标志
+    for (size_t i = 0; i < previewItems.size(); ++i) {
+        const auto& item = previewItems[i];
+        
+        // 检查是否已取消
+        if (isCancelled()) {
+            Logger::getInstance().info("FileOrganizer: Operation cancelled by user");
+            summary.cancelled = true;
+            summary.cancelledAtItem = i + 1;  // 记录取消时的项目序号
+            summary.totalItems = previewItems.size();
+            break;
+        }
+        
         OrganizeResult result;
         result.sourcePath = item.sourcePath;
         result.fileName = item.fileName;
@@ -265,14 +289,26 @@ OrganizeSummary FileOrganizer::executeOrganize() {
         summary.details.push_back(result);
     }
     
-    // 输出汇总
-    Logger::getInstance().info(
-        "FileOrganizer: Execution complete - " +
-        std::to_string(summary.movedCount) + " moved, " +
-        std::to_string(summary.skippedConflictCount) + " skipped, " +
-        std::to_string(summary.failedCount) + " failed, " +
-        std::to_string(summary.noRuleCount) + " no rule"
-    );
+    // 输出汇总（根据是否取消调整输出信息）
+    if (summary.cancelled) {
+        Logger::getInstance().info(
+            "FileOrganizer: Execution cancelled by user - " +
+            std::to_string(summary.movedCount) + " moved, " +
+            std::to_string(summary.skippedConflictCount) + " skipped, " +
+            std::to_string(summary.failedCount) + " failed, " +
+            std::to_string(summary.noRuleCount) + " no rule, " +
+            "cancelled at item " + std::to_string(summary.cancelledAtItem) + "/" + 
+            std::to_string(summary.totalItems)
+        );
+    } else {
+        Logger::getInstance().info(
+            "FileOrganizer: Execution complete - " +
+            std::to_string(summary.movedCount) + " moved, " +
+            std::to_string(summary.skippedConflictCount) + " skipped, " +
+            std::to_string(summary.failedCount) + " failed, " +
+            std::to_string(summary.noRuleCount) + " no rule"
+        );
+    }
     
     return summary;
 }

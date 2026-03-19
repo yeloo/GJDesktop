@@ -6,6 +6,7 @@
 #include "../ui/main_window.h"
 
 #include <QApplication>
+#include <QStandardPaths>
 #include <filesystem>
 #include <iostream>
 
@@ -27,21 +28,32 @@ AppManager::AppManager()
     , m_trayManager(nullptr)
     , m_mainWindow(nullptr)
 {
-    // 获取用户桌面路径
-#ifdef _WIN32
-    const char* userProfile = std::getenv("USERPROFILE");
-    if (userProfile) {
-        m_desktopPath = std::string(userProfile) + "\\Desktop";
-    }
-#else
-    const char* home = std::getenv("HOME");
-    if (home) {
-        m_desktopPath = std::string(home) + "/Desktop";
-    }
-#endif
+    // 获取用户桌面路径 - 使用Qt标准路径API，确保平台兼容性
+    QString desktopPath = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
     
-    if (m_desktopPath.empty() || !fs::exists(m_desktopPath)) {
-        m_desktopPath = ".";
+    if (desktopPath.isEmpty()) {
+        // 如果Qt获取失败，尝试使用传统方式
+        #ifdef _WIN32
+            const char* userProfile = std::getenv("USERPROFILE");
+            if (userProfile) {
+                m_desktopPath = std::string(userProfile) + "\\Desktop";
+            }
+        #else
+            const char* home = std::getenv("HOME");
+            if (home) {
+                m_desktopPath = std::string(home) + "/Desktop";
+            }
+        #endif
+    } else {
+        m_desktopPath = desktopPath.toStdString();
+    }
+    
+    // 验证桌面路径是否存在
+    if (m_desktopPath.empty()) {
+        Logger::getInstance().error("AppManager: Failed to get desktop path");
+    } else if (!fs::exists(m_desktopPath)) {
+        Logger::getInstance().warning("AppManager: Desktop path does not exist: " + m_desktopPath);
+        // 不再静默回退到exe目录，让上层处理这个错误
     }
 }
 

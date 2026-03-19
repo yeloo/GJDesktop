@@ -16,6 +16,7 @@
 #include <QListWidgetItem>
 #include <QMessageBox>
 #include <QCloseEvent>
+#include <iomanip>
 
 using namespace ccdesk::core;
 
@@ -31,6 +32,7 @@ MainWindow::MainWindow(QWidget* parent)
     , m_confirmBtn(nullptr)
     , m_cancelBtn(nullptr)
     , m_settingsDialog(nullptr)
+    , m_isOrganizing(false)
 {
     setWindowTitle("CCDesk - 桌面整理工具");
     setGeometry(100, 100, 600, 400);
@@ -75,7 +77,7 @@ void MainWindow::initializeUI() {
     // 功能按钮布局
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     
-    // 一键整理按钮
+    // 一键整理/取消整理按钮
     m_organizeBtn = new QPushButton("一键整理", this);
     connect(m_organizeBtn, &QPushButton::clicked, this, &MainWindow::onOrganizeClicked);
     buttonLayout->addWidget(m_organizeBtn);
@@ -101,6 +103,12 @@ void MainWindow::initializeUI() {
 }
 
 void MainWindow::onOrganizeClicked() {
+    // 如果正在整理中，则切换为取消操作
+    if (m_isOrganizing) {
+        onCancelOrganizeClicked();
+        return;
+    }
+    
     if (!m_fileOrganizer) {
         QMessageBox::warning(this, "错误", "文件整理器未初始化");
         Logger::getInstance().error("MainWindow: FileOrganizer is null");
@@ -123,6 +131,18 @@ void MainWindow::onOrganizeClicked() {
     
     // 显示预览对话框
     showPreviewDialog(previewItems);
+}
+
+void MainWindow::onCancelOrganizeClicked() {
+    if (!m_isOrganizing || !m_fileOrganizer) {
+        return;
+    }
+    
+    Logger::getInstance().info("MainWindow: 用户请求取消整理");
+    m_statusLabel->setText("正在取消整理...");
+    
+    // 请求取消整理
+    m_fileOrganizer->cancelOrganize();
 }
 
 void MainWindow::showPreviewDialog(
@@ -216,6 +236,11 @@ void MainWindow::onPreviewConfirmed() {
     
     Logger::getInstance().info("MainWindow: 用户确认执行，开始正式整理");
     
+    // 设置整理状态
+    m_isOrganizing = true;
+    m_organizeBtn->setText("取消整理");
+    m_organizeBtn->setStyleSheet("background-color: #ff9999;");  // 红色背景提示取消
+    
     m_statusLabel->setText("正在执行整理...");
     
     // 关闭预览对话框
@@ -223,20 +248,38 @@ void MainWindow::onPreviewConfirmed() {
         m_previewDialog->close();
     }
     
-    // 执行真实整理
+    // 执行真实整理（同步阻塞）
     OrganizeSummary summary = m_fileOrganizer->executeOrganize();
     
-    // 记录结果摘要
-    Logger::getInstance().info("MainWindow: 执行完成 - " +
-                             std::to_string(summary.movedCount) + " 个文件已移动, " +
-                             std::to_string(summary.skippedConflictCount) + " 个文件因冲突跳过, " +
-                             std::to_string(summary.failedCount) + " 个文件失败, " +
-                             std::to_string(summary.noRuleCount) + " 个文件无匹配规则");
+    // 重置整理状态
+    m_isOrganizing = false;
+    m_organizeBtn->setText("一键整理");
+    m_organizeBtn->setStyleSheet("");  // 恢复默认样式
     
-    // 显示结果报告
-    showResultReport(summary);
-    
-    m_statusLabel->setText("整理完成");
+    // 根据是否取消显示不同的状态
+    if (summary.cancelled) {
+        m_statusLabel->setText("整理已取消");
+        Logger::getInstance().info("MainWindow: 整理被用户取消，已完成 " + 
+                                 std::to_string(summary.getTotalProcessed()) + "/" +
+                                 std::to_string(summary.getTotalItems()) + " 个项目");
+        
+        QMessageBox::information(this, "整理已取消",
+            QString("整理操作已被取消。\n已完成 %1/%2 个项目。")
+                .arg(summary.getTotalProcessed())
+                .arg(summary.getTotalItems()));
+    } else {
+        // 记录结果摘要
+        Logger::getInstance().info("MainWindow: 执行完成 - " +
+                                 std::to_string(summary.movedCount) + " 个文件已移动, " +
+                                 std::to_string(summary.skippedConflictCount) + " 个文件因冲突跳过, " +
+                                 std::to_string(summary.failedCount) + " 个文件失败, " +
+                                 std::to_string(summary.noRuleCount) + " 个文件无匹配规则");
+        
+        // 显示结果报告
+        showResultReport(summary);
+        
+        m_statusLabel->setText("整理完成");
+    }
 }
 
 void MainWindow::onPreviewCancelled() {
@@ -293,21 +336,41 @@ QString MainWindow::formatResultItem(const OrganizeResult& result) const {
 void MainWindow::showResultReport(const OrganizeSummary& summary) {
     // 创建结果报告对话框
     QDialog* resultDialog = new QDialog(this, Qt::Dialog | Qt::WindowCloseButtonHint);
-    resultDialog->setWindowTitle("整理结果报告");
+    
+    // 根据是否取消设置不同的标题
+    if (summary.cancelled) {
+        resultDialog->setWindowTitle("整理取消报告");
+    } else {
+        resultDialog->setWindowTitle("整理结果报告");
+    }
+    
     resultDialog->setGeometry(150, 100, 800, 600);
     
     QVBoxLayout* layout = new QVBoxLayout(resultDialog);
     
     // 标题
-    QLabel* titleLabel = new QLabel("整理执行报告", resultDialog);
+    QString titleText = summary.cancelled ? "整理取消报告" : "整理执行报告";
+    QLabel* titleLabel = new QLabel(titleText, resultDialog);
     titleLabel->setStyleSheet("font-size: 14px; font-weight: bold;");
     layout->addWidget(titleLabel);
     
     // 汇总统计 - 优化显示格式
     std::stringstream summaryText;
     summaryText << "\n";
-    summaryText << "  ═════════════ 汇总 ═════════════\n";
-    summaryText << "  总处理文件数:  " << summary.getTotalProcessed() << "\n";
+    
+    if (summary.cancelled) {
+        summaryText << "  ═════════════ 整理已取消 ═════════════\n";
+        summaryText << "  已处理文件数:  " << summary.getTotalProcessed() << " / " << summary.getTotalItems() << "\n";
+        summaryText << "  完成进度:      " << std::fixed << std::setprecision(1) 
+                   << (summary.getTotalItems() > 0 ? 
+                       (100.0 * summary.getTotalProcessed() / summary.getTotalItems()) : 0.0) 
+                   << "%\n";
+        summaryText << "  ✗ 取消于项目:  " << summary.cancelledAtItem << "\n";
+    } else {
+        summaryText << "  ═════════════ 汇总 ═════════════\n";
+        summaryText << "  总处理文件数:  " << summary.getTotalProcessed() << "\n";
+    }
+    
     summaryText << "  ✓ 成功移动:    " << summary.movedCount << "\n";
     summaryText << "  ⊗ 冲突跳过:    " << summary.skippedConflictCount << "\n";
     summaryText << "  ✗ 移动失败:    " << summary.failedCount << "\n";
@@ -315,9 +378,18 @@ void MainWindow::showResultReport(const OrganizeSummary& summary) {
     summaryText << "  ════════════════════════════════\n";
     
     QLabel* summaryLabel = new QLabel(QString::fromStdString(summaryText.str()), resultDialog);
-    summaryLabel->setStyleSheet("background-color: #e8f4f8; padding: 15px; "
-                               "font-family: 'Courier New', monospace; font-size: 12px; "
-                               "border: 2px solid #3498db; border-radius: 3px; color: #333;");
+    
+    // 根据是否取消使用不同的颜色样式
+    if (summary.cancelled) {
+        summaryLabel->setStyleSheet("background-color: #fffacd; padding: 15px; "
+                                   "font-family: 'Courier New', monospace; font-size: 12px; "
+                                   "border: 2px solid #f0e68c; border-radius: 3px; color: #333;");
+    } else {
+        summaryLabel->setStyleSheet("background-color: #e8f4f8; padding: 15px; "
+                                   "font-family: 'Courier New', monospace; font-size: 12px; "
+                                   "border: 2px solid #3498db; border-radius: 3px; color: #333;");
+    }
+    
     layout->addWidget(summaryLabel);
     
     // 详细结果列表
