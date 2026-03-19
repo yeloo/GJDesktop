@@ -38,14 +38,14 @@ SettingsDialog::SettingsDialog(
     , m_configManager(configManager)
     , m_fileOrganizer(fileOrganizer)
 {
-    setWindowTitle("Settings");
+    setWindowTitle("设置");
     setGeometry(300, 300, 700, 500);
     setModal(true);
     
     initializeUI();
     loadSettings();
     
-    Logger::getInstance().info("SettingsDialog: Initialized");
+    Logger::getInstance().info("SettingsDialog: 设置对话框初始化完成");
 }
 
 SettingsDialog::~SettingsDialog() {
@@ -56,7 +56,7 @@ void SettingsDialog::initializeUI() {
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
     
     // 标题
-    QLabel* titleLabel = new QLabel("Application Settings", this);
+    QLabel* titleLabel = new QLabel("应用程序设置", this);
     titleLabel->setStyleSheet("font-size: 14px; font-weight: bold;");
     mainLayout->addWidget(titleLabel);
     
@@ -68,28 +68,28 @@ void SettingsDialog::initializeUI() {
     QVBoxLayout* generalLayout = new QVBoxLayout(generalTab);
     
     // 开机启动设置组
-    QGroupBox* startupGroup = new QGroupBox("Startup Settings", this);
+    QGroupBox* startupGroup = new QGroupBox("开机启动设置", this);
     QVBoxLayout* startupLayout = new QVBoxLayout(startupGroup);
     
-    m_startupCheckbox = new QCheckBox("Run on system startup", this);
+    m_startupCheckbox = new QCheckBox("系统启动时自动运行", this);
     connect(m_startupCheckbox, QOverload<bool>::of(&QCheckBox::toggled),
             this, &SettingsDialog::onStartupToggled);
     startupLayout->addWidget(m_startupCheckbox);
     
-    m_startupStatusLabel = new QLabel("Status: Not configured", this);
+    m_startupStatusLabel = new QLabel("状态: 未配置", this);
     m_startupStatusLabel->setStyleSheet("color: #666; font-size: 11px;");
     startupLayout->addWidget(m_startupStatusLabel);
     
     generalLayout->addWidget(startupGroup);
     generalLayout->addStretch();
     
-    tabWidget->addTab(generalTab, "General");
+    tabWidget->addTab(generalTab, "通用");
     
     // ============ 标签页2：整理规则 ============
     QWidget* rulesTab = new QWidget();
     QVBoxLayout* rulesLayout = new QVBoxLayout(rulesTab);
     
-    QLabel* rulesLabel = new QLabel("Organization Rules:", this);
+    QLabel* rulesLabel = new QLabel("整理规则:", this);
     rulesLabel->setStyleSheet("font-weight: bold;");
     rulesLayout->addWidget(rulesLabel);
     
@@ -97,24 +97,24 @@ void SettingsDialog::initializeUI() {
     m_rulesList->setStyleSheet("QListWidget { border: 1px solid #ccc; }");
     rulesLayout->addWidget(m_rulesList);
     
-    QPushButton* refreshRulesBtn = new QPushButton("Refresh Rules", this);
+    QPushButton* refreshRulesBtn = new QPushButton("刷新规则", this);
     connect(refreshRulesBtn, &QPushButton::clicked, this, &SettingsDialog::onRefreshRules);
     rulesLayout->addWidget(refreshRulesBtn);
     
     QLabel* rulesNote = new QLabel(
-        "Note: This is a preview of organization rules.\n"
-        "Rule editing will be available in future versions.",
+        "说明：这是一个整理规则的预览。\n"
+        "规则编辑功能将在后续版本中提供。",
         this);
     rulesNote->setStyleSheet("color: #999; font-size: 10px;");
     rulesLayout->addWidget(rulesNote);
     
-    tabWidget->addTab(rulesTab, "Rules");
+    tabWidget->addTab(rulesTab, "规则");
     
     // ============ 标签页3：分区管理 ============
     QWidget* partitionsTab = new QWidget();
     QVBoxLayout* partitionsLayout = new QVBoxLayout(partitionsTab);
     
-    QLabel* partitionsLabel = new QLabel("Desktop Partitions:", this);
+    QLabel* partitionsLabel = new QLabel("桌面分区:", this);
     partitionsLabel->setStyleSheet("font-weight: bold;");
     partitionsLayout->addWidget(partitionsLabel);
     
@@ -122,29 +122,29 @@ void SettingsDialog::initializeUI() {
     m_partitionsList->setStyleSheet("QListWidget { border: 1px solid #ccc; }");
     partitionsLayout->addWidget(m_partitionsList);
     
-    QPushButton* refreshPartitionsBtn = new QPushButton("Refresh Partitions", this);
+    QPushButton* refreshPartitionsBtn = new QPushButton("刷新分区", this);
     connect(refreshPartitionsBtn, &QPushButton::clicked, this, &SettingsDialog::onRefreshPartitions);
     partitionsLayout->addWidget(refreshPartitionsBtn);
     
     QLabel* partitionsNote = new QLabel(
-        "Note: This is a preview of desktop partitions.\n"
-        "Partition editing will be available in future versions.",
+        "说明：这是一个桌面分区的预览。\n"
+        "分区编辑功能将在后续版本中提供。",
         this);
     partitionsNote->setStyleSheet("color: #999; font-size: 10px;");
     partitionsLayout->addWidget(partitionsNote);
     
-    tabWidget->addTab(partitionsTab, "Partitions");
+    tabWidget->addTab(partitionsTab, "分区");
     
     mainLayout->addWidget(tabWidget);
     
     // ============ 按钮 ============
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     
-    m_applyBtn = new QPushButton("Apply", this);
+    m_applyBtn = new QPushButton("应用", this);
     connect(m_applyBtn, &QPushButton::clicked, this, &SettingsDialog::onApplySettings);
     buttonLayout->addWidget(m_applyBtn);
     
-    m_closeBtn = new QPushButton("Close", this);
+    m_closeBtn = new QPushButton("关闭", this);
     connect(m_closeBtn, &QPushButton::clicked, this, &QDialog::accept);
     buttonLayout->addWidget(m_closeBtn);
     
@@ -153,7 +153,7 @@ void SettingsDialog::initializeUI() {
 
 void SettingsDialog::loadSettings() {
     if (!m_configManager) {
-        Logger::getInstance().warning("SettingsDialog: ConfigManager is null");
+        Logger::getInstance().warning("SettingsDialog: ConfigManager 为空");
         return;
     }
     
@@ -162,15 +162,15 @@ void SettingsDialog::loadSettings() {
     m_startupCheckbox->setChecked(startupEnabled);
     
     if (startupEnabled) {
-        m_startupStatusLabel->setText("Status: Enabled (will run on next startup)");
+        m_startupStatusLabel->setText("状态: 已启用 (将在下次系统启动时运行)");
         m_startupStatusLabel->setStyleSheet("color: green; font-size: 11px;");
     } else {
-        m_startupStatusLabel->setText("Status: Disabled");
+        m_startupStatusLabel->setText("状态: 已禁用");
         m_startupStatusLabel->setStyleSheet("color: #666; font-size: 11px;");
     }
     
-    Logger::getInstance().info("SettingsDialog: Settings loaded, startup enabled: " + 
-                             std::string(startupEnabled ? "true" : "false"));
+    Logger::getInstance().info("SettingsDialog: 设置已加载，开机启动: " + 
+                             std::string(startupEnabled ? "启用" : "禁用"));
     
     // 加载规则列表
     updateRulesList();
@@ -198,7 +198,7 @@ void SettingsDialog::updateRulesList() {
     }
     
     if (rules.empty()) {
-        QListWidgetItem* item = new QListWidgetItem("No rules configured");
+        QListWidgetItem* item = new QListWidgetItem("未配置任何规则");
         item->setFlags(item->flags() & ~Qt::ItemIsSelectable);
         m_rulesList->addItem(item);
     }
@@ -223,22 +223,22 @@ void SettingsDialog::updatePartitionsList() {
     }
     
     if (partitions.empty()) {
-        QListWidgetItem* item = new QListWidgetItem("No partitions configured");
+        QListWidgetItem* item = new QListWidgetItem("未配置任何分区");
         item->setFlags(item->flags() & ~Qt::ItemIsSelectable);
         m_partitionsList->addItem(item);
     }
 }
 
 void SettingsDialog::onStartupToggled(bool checked) {
-    Logger::getInstance().info("SettingsDialog: Startup toggle changed to: " + 
-                             std::string(checked ? "enabled" : "disabled"));
+    Logger::getInstance().info("SettingsDialog: 开机启动切换为: " + 
+                             std::string(checked ? "启用" : "禁用"));
     
     if (setStartupRegistry(checked)) {
         if (checked) {
-            m_startupStatusLabel->setText("Status: Enabled (will run on next startup)");
+            m_startupStatusLabel->setText("状态: 已启用 (将在下次系统启动时运行)");
             m_startupStatusLabel->setStyleSheet("color: green; font-size: 11px;");
         } else {
-            m_startupStatusLabel->setText("Status: Disabled");
+            m_startupStatusLabel->setText("状态: 已禁用");
             m_startupStatusLabel->setStyleSheet("color: #666; font-size: 11px;");
         }
         
@@ -247,7 +247,7 @@ void SettingsDialog::onStartupToggled(bool checked) {
             m_configManager->setStartupEnabled(checked);
         }
     } else {
-        Logger::getInstance().warning("SettingsDialog: Failed to set startup registry");
+        Logger::getInstance().warning("SettingsDialog: 设置开机启动注册表失败");
     }
 }
 
@@ -256,8 +256,8 @@ bool SettingsDialog::setStartupRegistry(bool enable) {
     // 获取应用路径
     std::string appPath = getApplicationPath();
     if (appPath.empty()) {
-        Logger::getInstance().error("SettingsDialog: Failed to get application path");
-        QMessageBox::warning(this, "Error", "Failed to get application path");
+        Logger::getInstance().error("SettingsDialog: 获取应用程序路径失败");
+        QMessageBox::warning(this, "错误", "获取应用程序路径失败");
         return false;
     }
     
@@ -272,9 +272,9 @@ bool SettingsDialog::setStartupRegistry(bool enable) {
         // 打开或创建注册表键
         result = RegOpenKeyExA(HKEY_CURRENT_USER, regPath, 0, KEY_SET_VALUE, &hKey);
         if (result != ERROR_SUCCESS) {
-            Logger::getInstance().error("SettingsDialog: Failed to open registry key, error: " + 
+            Logger::getInstance().error("SettingsDialog: 打开注册表键失败，错误代码: " + 
                                        std::to_string(result));
-            QMessageBox::warning(this, "Error", "Failed to access registry");
+            QMessageBox::warning(this, "错误", "访问注册表失败");
             return false;
         }
         
@@ -285,12 +285,12 @@ bool SettingsDialog::setStartupRegistry(bool enable) {
                                    appPath.length() + 1);
             
             if (result == ERROR_SUCCESS) {
-                Logger::getInstance().info("SettingsDialog: Successfully added to startup registry");
+                Logger::getInstance().info("SettingsDialog: 成功添加到开机启动注册表");
             } else {
-                Logger::getInstance().error("SettingsDialog: Failed to set registry value, error: " + 
+                Logger::getInstance().error("SettingsDialog: 设置注册表值失败，错误代码: " + 
                                            std::to_string(result));
                 RegCloseKey(hKey);
-                QMessageBox::warning(this, "Error", "Failed to set registry value");
+                QMessageBox::warning(this, "错误", "设置注册表值失败");
                 return false;
             }
         } else {
@@ -298,15 +298,15 @@ bool SettingsDialog::setStartupRegistry(bool enable) {
             result = RegDeleteValueA(hKey, appName);
             
             if (result == ERROR_SUCCESS) {
-                Logger::getInstance().info("SettingsDialog: Successfully removed from startup registry");
+                Logger::getInstance().info("SettingsDialog: 成功从开机启动注册表移除");
             } else if (result == ERROR_FILE_NOT_FOUND) {
                 // 键不存在，这也是成功的
-                Logger::getInstance().info("SettingsDialog: Registry entry already not present");
+                Logger::getInstance().info("SettingsDialog: 注册表项已不存在");
             } else {
-                Logger::getInstance().error("SettingsDialog: Failed to delete registry value, error: " + 
+                Logger::getInstance().error("SettingsDialog: 删除注册表值失败，错误代码: " + 
                                            std::to_string(result));
                 RegCloseKey(hKey);
-                QMessageBox::warning(this, "Error", "Failed to remove registry value");
+                QMessageBox::warning(this, "错误", "删除注册表值失败");
                 return false;
             }
         }
@@ -314,15 +314,15 @@ bool SettingsDialog::setStartupRegistry(bool enable) {
         RegCloseKey(hKey);
         return true;
     } catch (const std::exception& e) {
-        Logger::getInstance().error("SettingsDialog: Exception in setStartupRegistry: " + 
+        Logger::getInstance().error("SettingsDialog: setStartupRegistry 异常: " + 
                                    std::string(e.what()));
-        QMessageBox::warning(this, "Error", QString::fromStdString("Exception occurred: " + std::string(e.what())));
+        QMessageBox::warning(this, "错误", QString::fromStdString("发生异常: " + std::string(e.what())));
         return false;
     }
 #else
     // Linux/Mac 暂不支持
-    Logger::getInstance().warning("SettingsDialog: Startup registry not supported on this platform");
-    QMessageBox::information(this, "Info", "Startup setting not supported on this platform");
+    Logger::getInstance().warning("SettingsDialog: 当前平台不支持开机启动设置");
+    QMessageBox::information(this, "信息", "当前平台不支持开机启动设置");
     return false;
 #endif
 }
@@ -339,28 +339,28 @@ std::string SettingsDialog::getApplicationPath() const {
 }
 
 void SettingsDialog::onRefreshRules() {
-    Logger::getInstance().info("SettingsDialog: Refreshing rules list");
+    Logger::getInstance().info("SettingsDialog: 刷新规则列表");
     updateRulesList();
 }
 
 void SettingsDialog::onRefreshPartitions() {
-    Logger::getInstance().info("SettingsDialog: Refreshing partitions list");
+    Logger::getInstance().info("SettingsDialog: 刷新分区列表");
     updatePartitionsList();
 }
 
 void SettingsDialog::onApplySettings() {
-    Logger::getInstance().info("SettingsDialog: Apply settings clicked");
+    Logger::getInstance().info("SettingsDialog: 点击了应用设置");
     
     if (m_configManager) {
         if (m_configManager->save()) {
-            Logger::getInstance().info("SettingsDialog: Settings saved successfully");
-            QMessageBox::information(this, "Success", "Settings saved successfully");
+            Logger::getInstance().info("SettingsDialog: 设置保存成功");
+            QMessageBox::information(this, "成功", "设置保存成功");
         } else {
-            Logger::getInstance().error("SettingsDialog: Failed to save settings");
-            QMessageBox::warning(this, "Error", "Failed to save settings");
+            Logger::getInstance().error("SettingsDialog: 设置保存失败");
+            QMessageBox::warning(this, "错误", "设置保存失败");
         }
     } else {
-        Logger::getInstance().error("SettingsDialog: ConfigManager is null");
+        Logger::getInstance().error("SettingsDialog: ConfigManager 为空");
     }
 }
 

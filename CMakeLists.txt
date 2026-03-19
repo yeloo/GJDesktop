@@ -51,6 +51,13 @@ endif()
 
 target_include_directories(CCDesk PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+# Windows GUI 子系统设置：避免双击运行出现控制台黑框
+if(WIN32)
+    set_target_properties(CCDesk PROPERTIES 
+        WIN32_EXECUTABLE TRUE  # 设置为 Windows GUI 应用程序
+    )
+endif()
+
 set_target_properties(CCDesk PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     # 显式指定 Multi-Config (如 MSVC) 生成器的配置后缀

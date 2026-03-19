@@ -100,14 +100,21 @@ void Logger::log(LogLevel level, const std::string& message) {
     ss << "[" << timestamp << "] [" << levelStr << "] " << message;
     std::string logMessage = ss.str();
     
-    // 输出到文件
+    // 输出到文件（Release 和 Debug 模式都写入文件）
     if (m_logFile.is_open()) {
         m_logFile << logMessage << std::endl;
         m_logFile.flush();
     }
     
-    // 输出到控制台
+    // 控制台输出策略：仅在 Debug 模式下输出到控制台
+    // 在 Release 模式下，GUI 程序不应弹出控制台窗口
+#ifdef NDEBUG
+    // Release 模式：不输出到控制台，避免弹出黑框窗口
+    // 日志已经写入文件，用户可以在需要时查看日志文件
+#else
+    // Debug 模式：输出到控制台，方便开发调试
     std::cout << logMessage << std::endl;
+#endif
 }
 
 void Logger::debug(const std::string& message) {

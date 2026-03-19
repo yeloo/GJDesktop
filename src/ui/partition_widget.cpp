@@ -75,11 +75,11 @@ void PartitionWidget::refreshFileList() {
     
     // 检查路径是否存在
     if (!fs::exists(m_targetPath)) {
-        QListWidgetItem* item = new QListWidgetItem("⚠ Directory not found");
+        QListWidgetItem* item = new QListWidgetItem("⚠ 目录不存在");
         item->setForeground(Qt::red);
         m_fileList->addItem(item);
         ccdesk::core::Logger::getInstance().warning(
-            "PartitionWidget: Target path does not exist: " + m_targetPath
+            "PartitionWidget: 目标路径不存在: " + m_targetPath
         );
         return;
     }
@@ -97,7 +97,7 @@ void PartitionWidget::refreshFileList() {
         
         // 若没有文件，显示提示
         if (fileCount == 0) {
-            QListWidgetItem* item = new QListWidgetItem("(Empty)");
+            QListWidgetItem* item = new QListWidgetItem("(空)");
             item->setForeground(Qt::gray);
             m_fileList->addItem(item);
         }
@@ -106,12 +106,12 @@ void PartitionWidget::refreshFileList() {
             "PartitionWidget: Refreshed " + m_partitionName + ", " + std::to_string(fileCount) + " files"
         );
     } catch (const std::exception& e) {
-        QListWidgetItem* item = new QListWidgetItem("✗ Error reading directory");
+        QListWidgetItem* item = new QListWidgetItem("✗ 读取目录时出错");
         item->setForeground(Qt::red);
         m_fileList->addItem(item);
         
         ccdesk::core::Logger::getInstance().error(
-            "PartitionWidget: Error reading directory: " + std::string(e.what())
+            "PartitionWidget: 读取目录时出错: " + std::string(e.what())
         );
     }
 }
