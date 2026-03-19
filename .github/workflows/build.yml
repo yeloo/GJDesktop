@@ -1,0 +1,201 @@
+# ==============================================================
+# GitHub Actions - CCDesk 自动编译工作流
+# 平台: Windows Latest
+# 编译器: MSVC (Visual Studio 2022)
+# Qt 版本: 6.8.x (由 jurplel/install-qt-action 安装)
+# 构建类型: Release
+# 产物: CCDesk-Release-windows-x64.zip (含 windeployqt 依赖)
+# ==============================================================
+#
+# 触发条件:
+#   - push 到 main / master 分支
+#   - 向 main / master 提交 pull request
+#   - 手动触发 (workflow_dispatch)
+#   - 打 tag (v*)，自动创建 GitHub Release
+# ==============================================================
+
+name: Build CCDesk (Windows Release)
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'          # v1.0.0、v1.0.0-beta 等格式均触发
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:   # 允许在 Actions 页面手动点击触发
+
+# 同一分支同时触发多个 workflow 时，自动取消旧的运行
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================
+  # Job: build
+  # 在 windows-latest 上编译 Release 并打包
+  # ============================================================
+  build:
+    name: Build on Windows (MSVC + Qt6)
+    runs-on: windows-latest
+
+    env:
+      BUILD_TYPE: Release
+      QT_VERSION: '6.8.1'           # 修改此处升级 Qt 版本
+      QT_ARCH: win64_msvc2022_64    # 对应 MSVC 2022 64-bit
+      ARTIFACT_NAME: CCDesk-Release-windows-x64
+
+    steps:
+      # ----------------------------------------------------------
+      # 1. 拉取代码
+      # ----------------------------------------------------------
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 完整历史，确保 git describe 可用
+
+      # ----------------------------------------------------------
+      # 2. 安装 Qt 6
+      #    使用 jurplel/install-qt-action (业界标准方案)
+      # ----------------------------------------------------------
+      - name: Install Qt ${{ env.QT_VERSION }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: ${{ env.QT_ARCH }}
+          modules: ''           # 仅需 Core Gui Widgets，无需额外模块
+          cache: true           # 缓存 Qt 安装，加速后续运行
+          cache-key-prefix: qt-${{ env.QT_VERSION }}-${{ env.QT_ARCH }}
+
+      # ----------------------------------------------------------
+      # 3. 配置 Visual Studio 环境变量
+      #    确保 CMake 能找到 MSVC 编译器
+      # ----------------------------------------------------------
+      - name: Setup MSVC Developer Environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64   # 64-bit
+
+      # ----------------------------------------------------------
+      # 4. 配置 CMake (Release 模式)
+      # ----------------------------------------------------------
+      - name: Configure CMake
+        run: |
+          cmake -B build `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+            -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}" `
+            -DCMAKE_CXX_FLAGS="/utf-8"
+
+      # ----------------------------------------------------------
+      # 5. 编译
+      # ----------------------------------------------------------
+      - name: Build (Release)
+        run: |
+          cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+      # ----------------------------------------------------------
+      # 6. 验证可执行文件是否存在
+      # ----------------------------------------------------------
+      - name: Verify executable
+        run: |
+          if (Test-Path "build/bin/CCDesk.exe") {
+            $size = (Get-Item "build/bin/CCDesk.exe").Length / 1MB
+            Write-Host "✓ CCDesk.exe found, size: $([math]::Round($size, 2)) MB"
+          } else {
+            Write-Error "✗ CCDesk.exe not found!"
+            exit 1
+          }
+
+      # ----------------------------------------------------------
+      # 7. windeployqt - 自动收集 Qt 运行库
+      # ----------------------------------------------------------
+      - name: Deploy Qt dependencies (windeployqt)
+        run: |
+          $qtBin = "${{ env.Qt6_DIR }}/bin"
+          & "$qtBin/windeployqt.exe" `
+            "build/bin/CCDesk.exe" `
+            --release `
+            --no-translations `
+            --no-system-d3d-compiler `
+            --no-opengl-sw `
+            --dir "deploy"
+
+          # 将可执行文件也复制进 deploy 目录
+          Copy-Item "build/bin/CCDesk.exe" -Destination "deploy/"
+          Write-Host "✓ Deploy directory contents:"
+          Get-ChildItem "deploy" -Recurse | Select-Object FullName
+
+      # ----------------------------------------------------------
+      # 8. 写入版本信息文件（便于用户识别构建来源）
+      # ----------------------------------------------------------
+      - name: Write build info
+        run: |
+          $info = @"
+          CCDesk - Desktop Organizer
+          ==========================
+          Version  : ${{ github.ref_name }}
+          Commit   : ${{ github.sha }}
+          Build    : ${{ github.run_number }}
+          Date     : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
+          Platform : Windows x64
+          Qt       : ${{ env.QT_VERSION }}
+          Compiler : MSVC 2022
+          "@
+          $info | Out-File -FilePath "deploy/BUILD_INFO.txt" -Encoding UTF8
+          Write-Host $info
+
+      # ----------------------------------------------------------
+      # 9. 打包为 ZIP
+      # ----------------------------------------------------------
+      - name: Package artifact (ZIP)
+        run: |
+          Compress-Archive `
+            -Path "deploy/*" `
+            -DestinationPath "${{ env.ARTIFACT_NAME }}.zip" `
+            -CompressionLevel Optimal
+          $zipSize = (Get-Item "${{ env.ARTIFACT_NAME }}.zip").Length / 1MB
+          Write-Host "✓ Package size: $([math]::Round($zipSize, 2)) MB"
+
+      # ----------------------------------------------------------
+      # 10. 上传 Artifact（所有触发方式都上传，保留 7 天）
+      # ----------------------------------------------------------
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_NAME }}.zip
+          retention-days: 7
+          if-no-files-found: error
+
+      # ----------------------------------------------------------
+      # 11. 如果是 tag 推送，自动创建 GitHub Release
+      # ----------------------------------------------------------
+      - name: Create GitHub Release (on tag push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: CCDesk ${{ github.ref_name }}
+          body: |
+            ## CCDesk ${{ github.ref_name }}
+
+            ### 下载说明
+            下载 `CCDesk-Release-windows-x64.zip`，解压后直接运行 `CCDesk.exe`。
+
+            ### 系统要求
+            - Windows 10 / 11 (x64)
+            - 无需安装 Qt 运行库（已打包）
+
+            ### 更新内容
+            请查看 [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
+
+            ---
+            Build: #${{ github.run_number }} | Commit: ${{ github.sha }}
+          files: ${{ env.ARTIFACT_NAME }}.zip
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
