@@ -5,11 +5,14 @@
 #include <memory>
 #include <vector>
 #include <sstream>
+#include <QTimer>
 
 class QPushButton;
 class QLabel;
 class QDialog;
 class QListWidget;
+class QGridLayout;
+class QScrollArea;
 
 namespace ccdesk::core {
 class FileOrganizer;
@@ -18,11 +21,11 @@ class ConfigManager;
 struct OrganizePreviewItem;
 struct OrganizeSummary;
 struct OrganizeResult;
+struct OrganizePlan;
 } // namespace ccdesk::core
 
 namespace ccdesk::ui {
 
-class PartitionWidget;
 class SettingsDialog;
 
 class MainWindow : public QMainWindow {
@@ -61,7 +64,6 @@ protected:
 private:
     // UI组件
     QPushButton* m_organizeBtn;
-    QPushButton* m_partitionBtn;
     QPushButton* m_settingsBtn;
     QLabel* m_statusLabel;
     
@@ -75,9 +77,6 @@ private:
     QListWidget* m_previewList;
     QPushButton* m_confirmBtn;
     QPushButton* m_cancelBtn;
-    
-    // 分区窗口管理
-    std::vector<std::shared_ptr<PartitionWidget>> m_partitions;
     
     // 设置对话框
     SettingsDialog* m_settingsDialog;
@@ -93,6 +92,9 @@ private:
     
     // 显示结果报告
     void showResultReport(const ccdesk::core::OrganizeSummary& summary);
+    
+    // 显示整理规划（最小可用规划器）
+    void showOrganizePlan(const ccdesk::core::OrganizePlan& plan);
     
     // 隐藏到托盘
     void hideToTray();

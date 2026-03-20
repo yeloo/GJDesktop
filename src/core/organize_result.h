@@ -33,6 +33,7 @@ struct OrganizeSummary {
     bool cancelled;           // 是否被用户取消
     size_t cancelledAtItem;   // 取消时的项目序号（1-based）
     size_t totalItems;        // 总项目数
+    std::string message;      // 结果消息（修复：添加缺失的message字段）
     
     std::vector<OrganizeResult> details; // 详细结果列表
     

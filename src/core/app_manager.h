@@ -10,6 +10,7 @@ class Logger;
 class ConfigManager;
 class FileOrganizer;
 class TrayManager;
+class DesktopLayoutManager;
 } // namespace ccdesk::core
 
 namespace ccdesk::ui {
@@ -29,6 +30,7 @@ public:
     Logger* getLogger() const;
     ConfigManager* getConfigManager() const;
     FileOrganizer* getFileOrganizer() const;
+    DesktopLayoutManager* getDesktopLayoutManager() const;
     TrayManager* getTrayManager() const;
     ui::MainWindow* getMainWindow() const;
     
@@ -52,6 +54,9 @@ private:
     // 初始化ConfigManager
     bool initializeConfigManager();
     
+    // 初始化DesktopLayoutManager
+    bool initializeDesktopLayoutManager();
+    
     // 初始化FileOrganizer
     bool initializeFileOrganizer();
     
@@ -67,6 +72,7 @@ private:
     // 成员变量
     Logger* m_logger;  // 单例，不需要 unique_ptr
     std::unique_ptr<ConfigManager> m_configManager;
+    std::unique_ptr<DesktopLayoutManager> m_desktopLayoutManager;
     std::unique_ptr<FileOrganizer> m_fileOrganizer;
     std::unique_ptr<TrayManager> m_trayManager;
     std::unique_ptr<ui::MainWindow> m_mainWindow;

@@ -39,7 +39,7 @@ private slots:
     
     // 菜单项点击处理
     void onShowMainWindow();
-    void onOneClickOrganize();
+    void onGenerateOrganizePlan();
     void onShowSettings();
     void onExitApp();
 

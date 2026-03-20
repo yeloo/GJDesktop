@@ -31,7 +31,6 @@ SettingsDialog::SettingsDialog(
     : QDialog(parent)
     , m_startupCheckbox(nullptr)
     , m_rulesList(nullptr)
-    , m_partitionsList(nullptr)
     , m_applyBtn(nullptr)
     , m_closeBtn(nullptr)
     , m_startupStatusLabel(nullptr)
@@ -110,30 +109,7 @@ void SettingsDialog::initializeUI() {
     
     tabWidget->addTab(rulesTab, "规则");
     
-    // ============ 标签页3：分区管理 ============
-    QWidget* partitionsTab = new QWidget();
-    QVBoxLayout* partitionsLayout = new QVBoxLayout(partitionsTab);
-    
-    QLabel* partitionsLabel = new QLabel("桌面分区:", this);
-    partitionsLabel->setStyleSheet("font-weight: bold;");
-    partitionsLayout->addWidget(partitionsLabel);
-    
-    m_partitionsList = new QListWidget(this);
-    m_partitionsList->setStyleSheet("QListWidget { border: 1px solid #ccc; }");
-    partitionsLayout->addWidget(m_partitionsList);
-    
-    QPushButton* refreshPartitionsBtn = new QPushButton("刷新分区", this);
-    connect(refreshPartitionsBtn, &QPushButton::clicked, this, &SettingsDialog::onRefreshPartitions);
-    partitionsLayout->addWidget(refreshPartitionsBtn);
-    
-    QLabel* partitionsNote = new QLabel(
-        "说明：这是一个桌面分区的预览。\n"
-        "分区编辑功能将在后续版本中提供。",
-        this);
-    partitionsNote->setStyleSheet("color: #999; font-size: 10px;");
-    partitionsLayout->addWidget(partitionsNote);
-    
-    tabWidget->addTab(partitionsTab, "分区");
+    // 分区管理标签页已移除 - 当前版本不支持虚拟分区
     
     mainLayout->addWidget(tabWidget);
     
@@ -175,8 +151,7 @@ void SettingsDialog::loadSettings() {
     // 加载规则列表
     updateRulesList();
     
-    // 加载分区列表
-    updatePartitionsList();
+    // 分区列表加载已移除
 }
 
 void SettingsDialog::updateRulesList() {
@@ -204,30 +179,7 @@ void SettingsDialog::updateRulesList() {
     }
 }
 
-void SettingsDialog::updatePartitionsList() {
-    m_partitionsList->clear();
-    
-    if (!m_configManager) {
-        return;
-    }
-    
-    const auto& partitions = m_configManager->getPartitions();
-    
-    for (const auto& partition : partitions) {
-        std::stringstream ss;
-        ss << partition.name << " [" << partition.targetPath << "]";
-        
-        QListWidgetItem* item = new QListWidgetItem(QString::fromStdString(ss.str()));
-        item->setFlags(item->flags() & ~Qt::ItemIsSelectable);
-        m_partitionsList->addItem(item);
-    }
-    
-    if (partitions.empty()) {
-        QListWidgetItem* item = new QListWidgetItem("未配置任何分区");
-        item->setFlags(item->flags() & ~Qt::ItemIsSelectable);
-        m_partitionsList->addItem(item);
-    }
-}
+// updatePartitionsList() 已移除 - 当前版本不支持虚拟分区
 
 void SettingsDialog::onStartupToggled(bool checked) {
     Logger::getInstance().info("SettingsDialog: 开机启动切换为: " + 
@@ -343,10 +295,7 @@ void SettingsDialog::onRefreshRules() {
     updateRulesList();
 }
 
-void SettingsDialog::onRefreshPartitions() {
-    Logger::getInstance().info("SettingsDialog: 刷新分区列表");
-    updatePartitionsList();
-}
+// onRefreshPartitions() 已移除 - 当前版本不支持虚拟分区
 
 void SettingsDialog::onApplySettings() {
     Logger::getInstance().info("SettingsDialog: 点击了应用设置");

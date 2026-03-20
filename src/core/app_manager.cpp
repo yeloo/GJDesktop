@@ -1,6 +1,7 @@
 #include "app_manager.h"
 #include "logger.h"
 #include "config_manager.h"
+#include "desktop_layout_manager.h"
 #include "file_organizer.h"
 #include "tray_manager.h"
 #include "../ui/main_window.h"
@@ -24,6 +25,7 @@ AppManager& AppManager::getInstance() {
 AppManager::AppManager()
     : m_logger(nullptr)
     , m_configManager(nullptr)
+    , m_desktopLayoutManager(nullptr)
     , m_fileOrganizer(nullptr)
     , m_trayManager(nullptr)
     , m_mainWindow(nullptr)
@@ -62,12 +64,12 @@ AppManager::~AppManager() {
 }
 
 bool AppManager::initialize() {
-    std::cout << "AppManager: Initializing..." << std::endl;
     
     if (!initializeLogger()) {
-        std::cerr << "Failed to initialize Logger" << std::endl;
         return false;
     }
+    
+    Logger::getInstance().info("AppManager: 正在初始化...");
     
     Logger::getInstance().info("AppManager: Logger initialized");
     
@@ -77,6 +79,13 @@ bool AppManager::initialize() {
     }
     
     Logger::getInstance().info("AppManager: ConfigManager initialized");
+    
+    if (!initializeDesktopLayoutManager()) {
+        Logger::getInstance().error("AppManager: Failed to initialize DesktopLayoutManager");
+        return false;
+    }
+    
+    Logger::getInstance().info("AppManager: DesktopLayoutManager initialized");
     
     if (!initializeFileOrganizer()) {
         Logger::getInstance().error("AppManager: Failed to initialize FileOrganizer");
@@ -117,11 +126,25 @@ bool AppManager::initializeConfigManager() {
     return m_configManager != nullptr;
 }
 
+bool AppManager::initializeDesktopLayoutManager() {
+    m_desktopLayoutManager = std::make_unique<DesktopLayoutManager>();
+    
+    m_desktopLayoutManager->setDesktopPath(m_desktopPath);
+    Logger::getInstance().info("AppManager: DesktopLayoutManager initialized with desktop path: " + m_desktopPath);
+    
+    return m_desktopLayoutManager != nullptr;
+}
+
 bool AppManager::initializeFileOrganizer() {
     m_fileOrganizer = std::make_unique<FileOrganizer>();
     
     m_fileOrganizer->setDesktopPath(m_desktopPath);
     Logger::getInstance().info("AppManager: FileOrganizer desktop path set to: " + m_desktopPath);
+    
+    // 设置桌面布局管理器
+    if (m_desktopLayoutManager) {
+        m_fileOrganizer->setDesktopLayoutManager(m_desktopLayoutManager.get());
+    }
     
     if (m_configManager) {
         auto rules = m_configManager->getOrganizeRules();
@@ -168,23 +191,24 @@ bool AppManager::initializeTrayManager() {
 
 void AppManager::restorePartitions() {
     if (!m_configManager) {
-        Logger::getInstance().warning("AppManager: ConfigManager is null, cannot restore partitions");
+        Logger::getInstance().warning("AppManager: ConfigManager is null, cannot load partition config");
         return;
     }
     
     const auto& partitions = m_configManager->getPartitions();
     
     if (partitions.empty()) {
-        Logger::getInstance().info("AppManager: No partitions to restore");
+        Logger::getInstance().info("AppManager: No partition config found");
         return;
     }
     
-    Logger::getInstance().info("AppManager: Restoring " + std::to_string(partitions.size()) + " partitions");
+    Logger::getInstance().info("AppManager: Loaded " + std::to_string(partitions.size()) + " partition configs (compatibility only)");
     
-    // 分区恢复在后续阶段实现（UI需展示分区窗口）
+    // 当前版本仅加载分区配置作为兼容残留，不代表已实现分区系统
+    // 这些配置仅用于分类统计，不会创建虚拟分区窗口
     for (const auto& partition : partitions) {
-        Logger::getInstance().debug("AppManager: Restored partition: " + partition.name + 
-                                  " -> " + partition.targetPath);
+        Logger::getInstance().debug("AppManager: Loaded partition config: " + partition.name + 
+                                  " (category: " + std::to_string(partition.category) + ")");
     }
 }
 
@@ -198,6 +222,10 @@ ConfigManager* AppManager::getConfigManager() const {
 
 FileOrganizer* AppManager::getFileOrganizer() const {
     return m_fileOrganizer.get();
+}
+
+DesktopLayoutManager* AppManager::getDesktopLayoutManager() const {
+    return m_desktopLayoutManager.get();
 }
 
 TrayManager* AppManager::getTrayManager() const {
@@ -226,6 +254,7 @@ void AppManager::cleanup() {
     m_mainWindow.reset();
     m_trayManager.reset();
     m_fileOrganizer.reset();
+    m_desktopLayoutManager.reset();
     m_configManager.reset();
     // m_logger 是单例 raw pointer，不需要手动清理
     // 单例的生命周期由程序管理，不应在 AppManager 中销毁

@@ -1,6 +1,5 @@
 #include "main_window.h"
 #include "settings_dialog.h"
-#include "partition_widget.h"
 #include "../core/file_organizer.h"
 #include "../core/organize_result.h"
 #include "../core/logger.h"
@@ -34,7 +33,7 @@ MainWindow::MainWindow(QWidget* parent)
     , m_settingsDialog(nullptr)
     , m_isOrganizing(false)
 {
-    setWindowTitle("CCDesk - 桌面整理工具");
+    setWindowTitle("CCDesk - 桌面收纳盒规划器（规划指导模式）");
     setGeometry(100, 100, 600, 400);
     
     initializeUI();
@@ -70,31 +69,29 @@ void MainWindow::initializeUI() {
     QVBoxLayout* mainLayout = new QVBoxLayout(centralWidget);
     
     // 标题标签
-    QLabel* titleLabel = new QLabel("桌面整理工具", this);
+    QLabel* titleLabel = new QLabel("桌面收纳盒规划器", this);
     titleLabel->setStyleSheet("font-size: 16px; font-weight: bold;");
     mainLayout->addWidget(titleLabel);
     
     // 功能按钮布局
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     
-    // 一键整理/取消整理按钮
-    m_organizeBtn = new QPushButton("一键整理", this);
+    // 生成整理规划按钮
+    m_organizeBtn = new QPushButton("生成整理规划", this);
+    m_organizeBtn->setMinimumWidth(150);
     connect(m_organizeBtn, &QPushButton::clicked, this, &MainWindow::onOrganizeClicked);
     buttonLayout->addWidget(m_organizeBtn);
     
-    // 分区管理按钮
-    m_partitionBtn = new QPushButton("分区管理", this);
-    buttonLayout->addWidget(m_partitionBtn);
-    
     // 设置按钮
     m_settingsBtn = new QPushButton("设置", this);
+    m_settingsBtn->setMinimumWidth(100);
     connect(m_settingsBtn, &QPushButton::clicked, this, &MainWindow::showSettingsDialog);
     buttonLayout->addWidget(m_settingsBtn);
     
     mainLayout->addLayout(buttonLayout);
     
     // 状态标签
-    m_statusLabel = new QLabel("就绪", this);
+    m_statusLabel = new QLabel("就绪 - 规划模式（不会移动文件）", this);
     m_statusLabel->setStyleSheet("color: gray;");
     mainLayout->addWidget(m_statusLabel);
     
@@ -115,7 +112,7 @@ void MainWindow::onOrganizeClicked() {
         return;
     }
     
-    Logger::getInstance().info("MainWindow: 用户点击了'一键整理'按钮");
+    Logger::getInstance().info("MainWindow: 用户点击了'生成整理规划'按钮");
     m_statusLabel->setText("正在扫描桌面文件...");
     
     // 生成预览
@@ -123,7 +120,7 @@ void MainWindow::onOrganizeClicked() {
     
     if (previewItems.empty()) {
         Logger::getInstance().info("MainWindow: 桌面上未找到需要整理的文件");
-        QMessageBox::information(this, "没有文件", 
+        QMessageBox::information(this, "没有文件",
             "桌面上未找到需要整理的文件");
         m_statusLabel->setText("就绪 - 没有文件需要整理");
         return;
@@ -155,13 +152,13 @@ void MainWindow::showPreviewDialog(
     
     // 创建预览对话框
     m_previewDialog = new QDialog(this, Qt::Dialog | Qt::WindowCloseButtonHint);
-    m_previewDialog->setWindowTitle("整理预览");
+    m_previewDialog->setWindowTitle("分类规划预览");
     m_previewDialog->setGeometry(200, 150, 700, 500);
     
     QVBoxLayout* dialogLayout = new QVBoxLayout(m_previewDialog);
     
     // 标题
-    QLabel* titleLabel = new QLabel("预览 - 准备整理以下文件：", m_previewDialog);
+    QLabel* titleLabel = new QLabel("分类预览 - 桌面文件分类分析结果：", m_previewDialog);
     titleLabel->setStyleSheet("font-weight: bold; font-size: 12px;");
     dialogLayout->addWidget(titleLabel);
     
@@ -196,9 +193,9 @@ void MainWindow::showPreviewDialog(
     // 统计信息 - 更清晰的格式
     std::stringstream ss;
     ss << "总计: " << items.size() << " 个文件 | "
-       << "可移动: " << movableCount << " | "
-       << "冲突: " << conflictCount << " | "
-       << "无规则: " << noRuleCount;
+       << "已分类: " << movableCount << " | "
+       << "分类冲突: " << conflictCount << " | "
+       << "未匹配项: " << noRuleCount;
     
     QLabel* statsLabel = new QLabel(QString::fromStdString(ss.str()), m_previewDialog);
     statsLabel->setStyleSheet("background-color: #fffacd; padding: 8px; border: 1px solid #f0e68c; "
@@ -208,7 +205,7 @@ void MainWindow::showPreviewDialog(
     // 按钮布局
     QHBoxLayout* btnLayout = new QHBoxLayout();
     
-    m_confirmBtn = new QPushButton("确认执行", m_previewDialog);
+    m_confirmBtn = new QPushButton("生成整理规划", m_previewDialog);
     m_confirmBtn->setMinimumWidth(120);
     connect(m_confirmBtn, &QPushButton::clicked, this, &MainWindow::onPreviewConfirmed);
     btnLayout->addWidget(m_confirmBtn);
@@ -234,57 +231,36 @@ void MainWindow::onPreviewConfirmed() {
         return;
     }
     
-    Logger::getInstance().info("MainWindow: 用户确认执行，开始正式整理");
+    Logger::getInstance().info("MainWindow: 用户确认生成整理规划");
     
-    // 设置整理状态
+    // 设置处理状态
     m_isOrganizing = true;
-    m_organizeBtn->setText("取消整理");
+    m_organizeBtn->setText("取消生成");
     m_organizeBtn->setStyleSheet("background-color: #ff9999;");  // 红色背景提示取消
     
-    m_statusLabel->setText("正在执行整理...");
+    m_statusLabel->setText("正在生成整理规划...");
     
     // 关闭预览对话框
     if (m_previewDialog) {
         m_previewDialog->close();
     }
     
-    // 执行真实整理（同步阻塞）
-    OrganizeSummary summary = m_fileOrganizer->executeOrganize();
+    // 生成整理规划（不移动文件，只分析分类）
+    OrganizePlan plan = m_fileOrganizer->generateOrganizePlan();
     
     // 重置整理状态
     m_isOrganizing = false;
-    m_organizeBtn->setText("一键整理");
+    m_organizeBtn->setText("生成整理规划");
     m_organizeBtn->setStyleSheet("");  // 恢复默认样式
     
-    // 根据是否取消显示不同的状态
-    if (summary.cancelled) {
-        m_statusLabel->setText("整理已取消");
-        Logger::getInstance().info("MainWindow: 整理被用户取消，已完成 " + 
-                                 std::to_string(summary.getTotalProcessed()) + "/" +
-                                 std::to_string(summary.getTotalItems()) + " 个项目");
-        
-        QMessageBox::information(this, "整理已取消",
-            QString("整理操作已被取消。\n已完成 %1/%2 个项目。")
-                .arg(summary.getTotalProcessed())
-                .arg(summary.getTotalItems()));
-    } else {
-        // 记录结果摘要
-        Logger::getInstance().info("MainWindow: 执行完成 - " +
-                                 std::to_string(summary.movedCount) + " 个文件已移动, " +
-                                 std::to_string(summary.skippedConflictCount) + " 个文件因冲突跳过, " +
-                                 std::to_string(summary.failedCount) + " 个文件失败, " +
-                                 std::to_string(summary.noRuleCount) + " 个文件无匹配规则");
-        
-        // 显示结果报告
-        showResultReport(summary);
-        
-        m_statusLabel->setText("整理完成");
-    }
+    // 显示规划结果
+    showOrganizePlan(plan);
+    m_statusLabel->setText("规划生成完成");
 }
 
 void MainWindow::onPreviewCancelled() {
     Logger::getInstance().info("MainWindow: 用户取消了预览");
-    m_statusLabel->setText("整理已取消");
+    m_statusLabel->setText("规划生成已取消");
     
     if (m_previewDialog) {
         m_previewDialog->close();
@@ -293,18 +269,17 @@ void MainWindow::onPreviewCancelled() {
 
 QString MainWindow::formatPreviewItem(const OrganizePreviewItem& item) const {
     std::stringstream ss;
-    ss << "[" << item.fileName << "] -> ";
+    ss << "[" << item.fileName << "] 分类建议: ";
     
     switch (item.status) {
         case OrganizePreviewItem::Movable:
-            ss << "移动到 " << item.targetDirectory << " (规则: " 
-               << item.matchedRuleName << ")";
+            ss << "建议归类到 " << item.categoryName << " 分类";
             break;
         case OrganizePreviewItem::Conflict:
-            ss << "冲突 - 目标目录已存在同名文件: " << item.targetDirectory;
+            ss << "分类建议冲突 - 分类: " << item.categoryName;
             break;
         case OrganizePreviewItem::NoRule:
-            ss << "无规则 - 没有匹配的整理规则";
+            ss << "未匹配项 - 未找到匹配的分类规则";
             break;
     }
     
@@ -317,16 +292,16 @@ QString MainWindow::formatResultItem(const OrganizeResult& result) const {
     
     switch (result.finalStatus) {
         case OrganizeResult::Success:
-            ss << "✓ 成功 - 已移动到 " << result.targetPath;
+            ss << "✓ 成功 - 可归类到 " << result.targetPath;
             break;
         case OrganizeResult::SkippedConflict:
-            ss << "⊗ 跳过 - 冲突: " << result.message;
+            ss << "⊗ 跳过 - 分类冲突: " << result.message;
             break;
         case OrganizeResult::Failed:
             ss << "✗ 失败 - " << result.message;
             break;
         case OrganizeResult::NoRule:
-            ss << "○ 无规则 - " << result.message;
+            ss << "○ 未匹配 - " << result.message;
             break;
     }
     
@@ -339,9 +314,9 @@ void MainWindow::showResultReport(const OrganizeSummary& summary) {
     
     // 根据是否取消设置不同的标题
     if (summary.cancelled) {
-        resultDialog->setWindowTitle("整理取消报告");
+        resultDialog->setWindowTitle("规划取消报告");
     } else {
-        resultDialog->setWindowTitle("整理结果报告");
+        resultDialog->setWindowTitle("规划生成报告");
     }
     
     resultDialog->setGeometry(150, 100, 800, 600);
@@ -349,7 +324,7 @@ void MainWindow::showResultReport(const OrganizeSummary& summary) {
     QVBoxLayout* layout = new QVBoxLayout(resultDialog);
     
     // 标题
-    QString titleText = summary.cancelled ? "整理取消报告" : "整理执行报告";
+    QString titleText = summary.cancelled ? "规划取消报告" : "规划生成报告";
     QLabel* titleLabel = new QLabel(titleText, resultDialog);
     titleLabel->setStyleSheet("font-size: 14px; font-weight: bold;");
     layout->addWidget(titleLabel);
@@ -359,22 +334,22 @@ void MainWindow::showResultReport(const OrganizeSummary& summary) {
     summaryText << "\n";
     
     if (summary.cancelled) {
-        summaryText << "  ═════════════ 整理已取消 ═════════════\n";
-        summaryText << "  已处理文件数:  " << summary.getTotalProcessed() << " / " << summary.getTotalItems() << "\n";
+        summaryText << "  ═════════════ 规划生成已取消 ═════════════\n";
+        summaryText << "  已分析文件数:  " << summary.getTotalProcessed() << " / " << summary.getTotalItems() << "\n";
         summaryText << "  完成进度:      " << std::fixed << std::setprecision(1) 
                    << (summary.getTotalItems() > 0 ? 
                        (100.0 * summary.getTotalProcessed() / summary.getTotalItems()) : 0.0) 
                    << "%\n";
         summaryText << "  ✗ 取消于项目:  " << summary.cancelledAtItem << "\n";
     } else {
-        summaryText << "  ═════════════ 汇总 ═════════════\n";
-        summaryText << "  总处理文件数:  " << summary.getTotalProcessed() << "\n";
+        summaryText << "  ═════════════ 规划汇总 ═════════════\n";
+        summaryText << "  总分析文件数:  " << summary.getTotalProcessed() << "\n";
     }
     
-    summaryText << "  ✓ 成功移动:    " << summary.movedCount << "\n";
-    summaryText << "  ⊗ 冲突跳过:    " << summary.skippedConflictCount << "\n";
-    summaryText << "  ✗ 移动失败:    " << summary.failedCount << "\n";
-    summaryText << "  ○ 无匹配规则:  " << summary.noRuleCount << "\n";
+    summaryText << "  ✓ 可归类文件:    " << summary.movedCount << "\n";
+    summaryText << "  ⊗ 分类冲突:      " << summary.skippedConflictCount << "\n";
+    summaryText << "  ✗ 分类失败:      " << summary.failedCount << "\n";
+    summaryText << "  ○ 未匹配项:      " << summary.noRuleCount << "\n";
     summaryText << "  ════════════════════════════════\n";
     
     QLabel* summaryLabel = new QLabel(QString::fromStdString(summaryText.str()), resultDialog);
@@ -445,7 +420,7 @@ void MainWindow::showResultReport(const OrganizeSummary& summary) {
 }
 
 void MainWindow::triggerOrganizeFromTray() {
-    Logger::getInstance().info("MainWindow: 从托盘菜单触发一键整理");
+    Logger::getInstance().info("MainWindow: 从托盘菜单触发桌面分类分析");
     
     // 显示主窗口
     if (!isVisible()) {
@@ -494,6 +469,131 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         Logger::getInstance().info("MainWindow: 托盘不可用，退出应用程序");
         event->accept();
     }
+}
+
+void MainWindow::showOrganizePlan(const ccdesk::core::OrganizePlan& plan) {
+    // 创建规划显示对话框
+    QDialog* planDialog = new QDialog(this, Qt::Dialog | Qt::WindowCloseButtonHint);
+    planDialog->setWindowTitle("桌面整理规划（规划指导模式）");
+    planDialog->setGeometry(150, 100, 800, 600);
+    
+    QVBoxLayout* layout = new QVBoxLayout(planDialog);
+    
+    // 标题 - 明确说明这是规划模式
+    QLabel* titleLabel = new QLabel("桌面整理规划（规划指导模式）", planDialog);
+    titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50;");
+    layout->addWidget(titleLabel);
+    
+    // 重要提示 - 规划模式说明
+    QLabel* disclaimerLabel = new QLabel(
+        "<div style='background-color: #fff8dc; padding: 10px; border: 1px solid #e6db55; border-radius: 5px; margin-bottom: 15px;'>"
+        "<b>重要提示：</b>这是规划指导模式，仅提供文件分类建议，<b>不会移动任何文件</b>。<br>"
+        "请根据以下分类规划手动整理您的桌面文件。"
+        "</div>",
+        planDialog
+    );
+    disclaimerLabel->setTextFormat(Qt::RichText);
+    layout->addWidget(disclaimerLabel);
+    
+    // 摘要信息
+    QLabel* summaryLabel = new QLabel(
+        QString("<h3>规划摘要</h3>"
+                "<div style='background-color: #f0f8ff; padding: 15px; border: 1px solid #87ceeb; border-radius: 5px;'>"
+                "<table width='100%'>"
+                "<tr><td><b>桌面路径：</b></td><td>%1</td></tr>"
+                "<tr><td><b>总文件数：</b></td><td>%2 个文件</td></tr>"
+                "</table>"
+                "</div>")
+            .arg(QString::fromStdString(plan.desktopPath))
+            .arg(plan.totalFiles),
+        planDialog
+    );
+    summaryLabel->setTextFormat(Qt::RichText);
+    layout->addWidget(summaryLabel);
+    
+    // 分类统计
+    QLabel* categoryLabel = new QLabel("<h3>分类统计</h3>", planDialog);
+    categoryLabel->setStyleSheet("margin-top: 15px;");
+    layout->addWidget(categoryLabel);
+    
+    // 使用HTML表格显示分类统计
+    std::stringstream categoryHtml;
+    categoryHtml << "<div style='background-color: #f8f8f8; padding: 15px; border: 1px solid #ddd; border-radius: 5px;'>"
+                 << "<table width='100%' cellpadding='8' cellspacing='0'>";
+    
+    std::vector<ccdesk::core::FileCategory> fixedCategories = 
+        ccdesk::core::DesktopLayoutManager::getFixedCategories();
+    
+    bool hasCategories = false;
+    for (ccdesk::core::FileCategory cat : fixedCategories) {
+        int count = plan.getCategoryCount(cat);
+        if (count > 0) {
+            hasCategories = true;
+            categoryHtml << "<tr style='border-bottom: 1px solid #eee;'>"
+                         << "<td><b>" << ccdesk::core::DesktopLayoutManager::getCategoryName(cat) << "</b></td>"
+                         << "<td>" << count << " 个文件</td>"
+                         << "</tr>";
+        }
+    }
+    
+    if (!hasCategories) {
+        categoryHtml << "<tr><td colspan='2'><i>没有匹配到任何固定分类的文件</i></td></tr>";
+    }
+    
+    categoryHtml << "</table></div>";
+    
+    QLabel* categoryTableLabel = new QLabel(QString::fromStdString(categoryHtml.str()), planDialog);
+    categoryTableLabel->setTextFormat(Qt::RichText);
+    layout->addWidget(categoryTableLabel);
+    
+    // 文件明细（可折叠）
+    if (!plan.items.empty()) {
+        QLabel* detailLabel = new QLabel("<h3>文件明细</h3>", planDialog);
+        detailLabel->setStyleSheet("margin-top: 15px;");
+        layout->addWidget(detailLabel);
+        
+        QListWidget* detailList = new QListWidget(planDialog);
+        detailList->setStyleSheet("QListWidget { border: 1px solid #ccc; }");
+        
+        for (const auto& item : plan.items) {
+            QString itemText = QString("[%1] → %2")
+                .arg(QString::fromStdString(item.fileName))
+                .arg(QString::fromStdString(item.categoryName));
+            detailList->addItem(itemText);
+        }
+        
+        layout->addWidget(detailList);
+    }
+    
+    // 操作说明
+    QLabel* instructionLabel = new QLabel(
+        "<div style='background-color: #e8f8f5; padding: 10px; border: 1px solid #2ecc71; border-radius: 5px; margin-top: 15px;'>"
+        "<b>说明：</b><br>"
+        "1. 根据分类结果决定是否手动整理桌面文件<br>"
+        "2. 当前版本仅提供分类建议，不会自动移动文件<br>"
+        "3. 不会创建分类文件夹，不修改桌面文件布局"
+        "</div>",
+        planDialog
+    );
+    instructionLabel->setTextFormat(Qt::RichText);
+    layout->addWidget(instructionLabel);
+    
+    // 关闭按钮
+    QPushButton* closeBtn = new QPushButton("关闭", planDialog);
+    closeBtn->setMinimumWidth(120);
+    connect(closeBtn, &QPushButton::clicked, planDialog, &QDialog::accept);
+    
+    QHBoxLayout* btnLayout = new QHBoxLayout();
+    btnLayout->addStretch();
+    btnLayout->addWidget(closeBtn);
+    btnLayout->addStretch();
+    layout->addLayout(btnLayout);
+    
+    // 显示对话框
+    planDialog->exec();
+    
+    // 清理
+    delete planDialog;
 }
 
 } // namespace ccdesk::ui

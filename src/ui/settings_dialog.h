@@ -36,15 +36,11 @@ private slots:
     
     // 刷新规则列表
     void onRefreshRules();
-    
-    // 刷新分区列表
-    void onRefreshPartitions();
 
 private:
     // UI组件
     QCheckBox* m_startupCheckbox;
     QListWidget* m_rulesList;
-    QListWidget* m_partitionsList;
     QPushButton* m_applyBtn;
     QPushButton* m_closeBtn;
     QLabel* m_startupStatusLabel;
@@ -62,8 +58,7 @@ private:
     // 更新规则列表显示
     void updateRulesList();
     
-    // 更新分区列表显示
-    void updatePartitionsList();
+    // 分区列表显示已移除 - 当前版本不支持虚拟分区
     
     // 注册/移除开机启动
     bool setStartupRegistry(bool enable);

@@ -24,14 +24,14 @@ set(SOURCES
     src/core/file_organizer.h
     src/core/file_organizer.cpp
     src/core/organize_result.h
+    src/core/desktop_layout_manager.h
+    src/core/desktop_layout_manager.cpp
     src/core/tray_manager.h
     src/core/tray_manager.cpp
     src/core/app_manager.h
     src/core/app_manager.cpp
     src/ui/main_window.h
     src/ui/main_window.cpp
-    src/ui/partition_widget.h
-    src/ui/partition_widget.cpp
     src/ui/settings_dialog.h
     src/ui/settings_dialog.cpp
 )

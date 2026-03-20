@@ -8,7 +8,9 @@ namespace fs = std::filesystem;
 namespace ccdesk {
 namespace core {
 
-FileOrganizer::FileOrganizer() {}
+FileOrganizer::FileOrganizer()
+    : m_layoutManager(nullptr)
+{}
 
 FileOrganizer::~FileOrganizer() {}
 
@@ -42,12 +44,13 @@ std::vector<std::string> FileOrganizer::scanDesktopFiles() const {
     try {
         // 仅扫描一级目录，不递归
         for (const auto& entry : fs::directory_iterator(m_desktopPath)) {
-            if (entry.is_regular_file()) {
+            // 扫描普通文件和文件夹，不扫描子目录
+            if (entry.is_regular_file() || entry.is_directory()) {
                 files.push_back(entry.path().string());
             }
         }
         Logger::getInstance().info("FileOrganizer: Scanned desktop, found " + 
-                                 std::to_string(files.size()) + " files");
+                                 std::to_string(files.size()) + " items (files + folders)");
     } catch (const std::exception& e) {
         Logger::getInstance().error("FileOrganizer: Error scanning desktop: " + 
                                    std::string(e.what()));
@@ -60,7 +63,6 @@ std::string FileOrganizer::getFileExtension(const std::string& fileName) const {
     size_t dotPos = fileName.find_last_of('.');
     if (dotPos != std::string::npos && dotPos > 0) {
         std::string ext = fileName.substr(dotPos + 1);
-        // 转换为小写便于比较
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
         return ext;
     }
@@ -125,10 +127,26 @@ bool FileOrganizer::targetFileExists(const std::string& targetDir,
     return fs::exists(targetPath);
 }
 
-std::vector<OrganizePreviewItem> FileOrganizer::generatePreview() const {
-    std::vector<OrganizePreviewItem> preview;
+bool FileOrganizer::moveFile(const std::string& sourcePath, 
+                            const std::string& targetPath) {
+    // 彻底收口：moveFile 不再允许调用，直接返回失败
+    Logger::getInstance().error("FileOrganizer: moveFile() 已被禁用，当前版本仅支持规划模式");
+    Logger::getInstance().error("FileOrganizer: 拒绝移动 " + sourcePath + " -> " + targetPath);
     
-    Logger::getInstance().info("FileOrganizer: Generating preview...");
+    // 不再模拟成功，明确返回失败
+    return false;
+}
+
+std::vector<OrganizePreviewItem> FileOrganizer::generatePreview() const {
+    // 如果有布局管理器，使用新的分类预览
+    if (m_layoutManager) {
+        return generateCategoryPreview();
+    }
+    
+    // 否则使用旧的规则预览（向后兼容）
+    Logger::getInstance().info("FileOrganizer: Generating preview using legacy rules...");
+    
+    std::vector<OrganizePreviewItem> preview;
     
     auto files = scanDesktopFiles();
     
@@ -144,20 +162,19 @@ std::vector<OrganizePreviewItem> FileOrganizer::generatePreview() const {
         
         if (!matchedRule) {
             item.status = OrganizePreviewItem::NoRule;
-            item.statusMessage = "No matching rule";
-            item.matchedRuleName = "N/A";
-            item.targetDirectory = "N/A";
+            item.statusMessage = "未找到匹配的分类规则";
+            item.matchedRuleName = "未匹配";
         } else {
             item.matchedRuleName = matchedRule->name;
-            item.targetDirectory = matchedRule->targetPath;
+            item.categoryName = matchedRule->name;
             
-            // 检查冲突
+            // 检查冲突（仅用于信息显示，不会实际移动）
             if (targetFileExists(matchedRule->targetPath, fileName)) {
                 item.status = OrganizePreviewItem::Conflict;
-                item.statusMessage = "File exists in target directory";
+                item.statusMessage = "分类建议冲突 - 目标位置已存在同名文件";
             } else {
                 item.status = OrganizePreviewItem::Movable;
-                item.statusMessage = "Ready to move";
+                item.statusMessage = "建议归类到 " + matchedRule->name + " 分类";
             }
         }
         
@@ -173,144 +190,244 @@ std::vector<OrganizePreviewItem> FileOrganizer::generatePreview() const {
     return preview;
 }
 
-bool FileOrganizer::moveFile(const std::string& sourcePath, 
-                            const std::string& targetPath) {
-    try {
-        // 确保目标目录存在
-        fs::path targetDir = fs::path(targetPath).parent_path();
-        if (!fs::exists(targetDir)) {
-            try {
-                fs::create_directories(targetDir);
-                Logger::getInstance().info("FileOrganizer: Created target directory: " + targetDir.string());
-            } catch (const std::exception& e) {
-                Logger::getInstance().error("FileOrganizer: Failed to create target directory: " + 
-                                          std::string(e.what()));
-                return false;
-            }
+std::vector<OrganizePreviewItem> FileOrganizer::generateCategoryPreview() const {
+    Logger::getInstance().info("FileOrganizer: Generating preview using desktop layout manager...");
+    
+    std::vector<OrganizePreviewItem> preview;
+    
+    if (!m_layoutManager) {
+        Logger::getInstance().error("FileOrganizer: No layout manager available");
+        return preview;
+    }
+    
+    // 手动扫描桌面文件（不调用已删除的 scanAndClassify 方法）
+    auto files = scanDesktopFiles();
+    
+    for (const auto& filePath : files) {
+        // 分类文件
+        FileCategory category = m_layoutManager->classifyFile(filePath);
+        
+        // 跳过 OTHER 分类（内部未匹配标记）
+        if (category == CATEGORY_OTHER) {
+            Logger::getInstance().debug("FileOrganizer: 跳过未分类文件: " + filePath);
+            continue;
         }
         
-        fs::rename(sourcePath, targetPath);
-        Logger::getInstance().info("FileOrganizer: Successfully moved file: " + 
-                                 sourcePath + " -> " + targetPath);
-        return true;
-    } catch (const std::exception& e) {
-        Logger::getInstance().error("FileOrganizer: Failed to move file: " + 
-                                   sourcePath + " Error: " + e.what());
-        return false;
+        fs::path path(filePath);
+        std::string fileName = path.filename().string();
+        
+        OrganizePreviewItem item;
+        item.sourcePath = filePath;
+        item.fileName = fileName;
+        item.categoryName = DesktopLayoutManager::getCategoryName(category);
+        item.matchedRuleName = item.categoryName;  // 使用分类名称作为"规则名称"
+        
+        // 规划模式：仅提供分类建议，不实际移动文件
+        item.status = OrganizePreviewItem::Movable;
+        item.statusMessage = "建议归类到: " + item.categoryName + " 分类";
+        
+        preview.push_back(item);
     }
+    
+    Logger::getInstance().info("FileOrganizer: Category preview generated with " + 
+                             std::to_string(preview.size()) + " items");
+    
+    // 保存预览用于后续执行
+    const_cast<FileOrganizer*>(this)->m_currentPreview = preview;
+    
+    return preview;
 }
 
 void FileOrganizer::cancelOrganize() {
     m_isCancelled.store(true, std::memory_order_release);
     Logger::getInstance().info("FileOrganizer: Cancel requested");
+    
+    // 布局管理器已移除 cancelLayout 方法，无需额外操作
 }
 
 bool FileOrganizer::isCancelled() const {
     return m_isCancelled.load(std::memory_order_acquire);
 }
 
+void FileOrganizer::setDesktopLayoutManager(DesktopLayoutManager* layoutManager) {
+    m_layoutManager = layoutManager;
+    Logger::getInstance().info("FileOrganizer: DesktopLayoutManager set");
+}
+
+DesktopLayoutManager* FileOrganizer::getDesktopLayoutManager() const {
+    return m_layoutManager;
+}
+
 OrganizeSummary FileOrganizer::executeOrganize() {
     OrganizeSummary summary;
     
-    // 重置取消标志
-    m_isCancelled.store(false, std::memory_order_release);
+    Logger::getInstance().warning("FileOrganizer: executeOrganize() 已弃用，当前版本不支持真实文件移动");
+    Logger::getInstance().warning("FileOrganizer: 请使用 generateOrganizePlan() 生成整理规划");
     
-    Logger::getInstance().info("FileOrganizer: Starting real execution...");
-    
-    // 重新生成预览以确保数据最新
-    auto previewItems = generatePreview();
-    
-    // 在开始每个文件前检查取消标志
-    for (size_t i = 0; i < previewItems.size(); ++i) {
-        const auto& item = previewItems[i];
-        
-        // 检查是否已取消
-        if (isCancelled()) {
-            Logger::getInstance().info("FileOrganizer: Operation cancelled by user");
-            summary.cancelled = true;
-            summary.cancelledAtItem = i + 1;  // 记录取消时的项目序号
-            summary.totalItems = previewItems.size();
-            break;
-        }
-        
-        OrganizeResult result;
-        result.sourcePath = item.sourcePath;
-        result.fileName = item.fileName;
-        result.matchedRuleName = item.matchedRuleName;
-        
-        switch (item.status) {
-            case OrganizePreviewItem::NoRule:
-            {
-                result.finalStatus = OrganizeResult::NoRule;
-                result.message = "No matching rule found";
-                result.targetPath = "N/A";
-                summary.noRuleCount++;
-                Logger::getInstance().info("FileOrganizer: [NO RULE] " + item.fileName);
-                break;
-            }
-            
-            case OrganizePreviewItem::Conflict:
-            {
-                result.finalStatus = OrganizeResult::SkippedConflict;
-                result.message = "Target file already exists, skipped";
-                result.targetPath = item.targetDirectory;
-                summary.skippedConflictCount++;
-                Logger::getInstance().info("FileOrganizer: [CONFLICT] " + item.fileName + 
-                                         " -> " + item.targetDirectory);
-                break;
-            }
-            
-            case OrganizePreviewItem::Movable:
-            {
-                // 执行实际移动
-                fs::path targetPath = fs::path(item.targetDirectory) / item.fileName;
-                
-                if (moveFile(item.sourcePath, targetPath.string())) {
-                    result.finalStatus = OrganizeResult::Success;
-                    result.message = "Successfully moved";
-                    result.targetPath = targetPath.string();
-                    summary.movedCount++;
-                } else {
-                    result.finalStatus = OrganizeResult::Failed;
-                    result.message = "Failed to move file";
-                    result.targetPath = targetPath.string();
-                    summary.failedCount++;
-                    Logger::getInstance().error("FileOrganizer: [FAILED] " + item.fileName);
-                }
-                break;
-            }
-            
-            default:
-                result.finalStatus = OrganizeResult::Failed;
-                result.message = "Unknown status";
-                summary.failedCount++;
-        }
-        
-        summary.details.push_back(result);
-    }
-    
-    // 输出汇总（根据是否取消调整输出信息）
-    if (summary.cancelled) {
-        Logger::getInstance().info(
-            "FileOrganizer: Execution cancelled by user - " +
-            std::to_string(summary.movedCount) + " moved, " +
-            std::to_string(summary.skippedConflictCount) + " skipped, " +
-            std::to_string(summary.failedCount) + " failed, " +
-            std::to_string(summary.noRuleCount) + " no rule, " +
-            "cancelled at item " + std::to_string(summary.cancelledAtItem) + "/" + 
-            std::to_string(summary.totalItems)
-        );
-    } else {
-        Logger::getInstance().info(
-            "FileOrganizer: Execution complete - " +
-            std::to_string(summary.movedCount) + " moved, " +
-            std::to_string(summary.skippedConflictCount) + " skipped, " +
-            std::to_string(summary.failedCount) + " failed, " +
-            std::to_string(summary.noRuleCount) + " no rule"
-        );
-    }
+    // 设置弃用信息
+    summary.cancelled = true;
+    summary.totalItems = 0;
+    summary.movedCount = 0;
+    summary.skippedConflictCount = 0;
+    summary.failedCount = 0;
+    summary.noRuleCount = 0;
+    summary.message = "此功能已弃用，当前版本仅支持规划模式";
     
     return summary;
+}
+
+OrganizeSummary FileOrganizer::executeLegacyOrganize() {
+    OrganizeSummary summary;
+    
+    Logger::getInstance().warning("FileOrganizer: executeLegacyOrganize() 已弃用");
+    Logger::getInstance().warning("FileOrganizer: 当前版本仅支持规划模式，不会执行真实文件移动");
+    
+    // 彻底收口：直接返回弃用提示，不再执行任何伪流程
+    summary.cancelled = true;
+    summary.totalItems = 0;
+    summary.movedCount = 0;
+    summary.skippedConflictCount = 0;
+    summary.failedCount = 0;
+    summary.noRuleCount = 0;
+    summary.message = "此功能已弃用，仅支持规划模式";
+    
+    return summary;
+}
+
+OrganizeSummary FileOrganizer::executeDesktopOrganize() {
+    OrganizeSummary summary;
+    
+    Logger::getInstance().warning("FileOrganizer: executeDesktopOrganize() 已弃用");
+    Logger::getInstance().warning("FileOrganizer: 当前版本仅支持规划模式，不会执行真实文件移动");
+    
+    // 彻底收口：直接返回弃用提示，不再包含任何伪执行流程
+    summary.cancelled = true;
+    summary.totalItems = 0;
+    summary.movedCount = 0;
+    summary.skippedConflictCount = 0;
+    summary.failedCount = 0;
+    summary.noRuleCount = 0;
+    summary.message = "此功能已弃用，仅支持规划模式";
+    
+    return summary;
+}
+
+OrganizePlan FileOrganizer::generateOrganizePlan() {
+    OrganizePlan plan;
+    
+    // 重置取消标志（每次新分析前必须重置）
+    m_isCancelled.store(false, std::memory_order_release);
+    
+    Logger::getInstance().info("FileOrganizer: 开始分析桌面文件分类");
+    
+    if (m_desktopPath.empty()) {
+        Logger::getInstance().error("FileOrganizer: 桌面路径未设置，无法生成规划");
+        return plan;
+    }
+    
+    plan.desktopPath = m_desktopPath;
+    
+    // 扫描桌面文件
+    auto files = scanDesktopFiles();
+    plan.totalFiles = static_cast<int>(files.size());
+    
+    if (plan.totalFiles == 0) {
+        Logger::getInstance().info("FileOrganizer: 桌面上没有文件需要整理");
+        return plan;
+    }
+    
+    Logger::getInstance().info("FileOrganizer: 扫描到 " + std::to_string(plan.totalFiles) + " 个桌面项目（文件+文件夹）");
+    
+    // 如果有桌面布局管理器，使用分类逻辑
+    if (m_layoutManager) {
+        for (const auto& filePath : files) {
+            // 检查取消标志
+            if (isCancelled()) {
+                Logger::getInstance().info("FileOrganizer: 规划生成被取消");
+                break;
+            }
+            
+            fs::path path(filePath);
+            std::string fileName = path.filename().string();
+            
+            // 分类文件
+            FileCategory category = m_layoutManager->classifyFile(filePath);
+            
+            // 统计分类数量
+            plan.categoryCounts[category]++;
+            
+            // 添加预览项
+            OrganizePreviewItem item;
+            item.sourcePath = filePath;
+            item.fileName = fileName;
+            item.categoryName = DesktopLayoutManager::getCategoryName(category);
+            item.matchedRuleName = item.categoryName;
+item.status = OrganizePreviewItem::Movable;
+item.statusMessage = "属于: " + item.categoryName + " 分类";
+            
+            plan.items.push_back(item);
+        }
+    } else {
+        // 如果没有布局管理器，使用旧规则
+        Logger::getInstance().warning("FileOrganizer: 没有布局管理器，使用旧规则生成规划");
+        
+        for (const auto& filePath : files) {
+            // 检查取消标志
+            if (isCancelled()) {
+                Logger::getInstance().info("FileOrganizer: 规划生成被取消");
+                break;
+            }
+            
+            fs::path path(filePath);
+            std::string fileName = path.filename().string();
+            
+            OrganizePreviewItem item;
+            item.sourcePath = filePath;
+            item.fileName = fileName;
+            
+            const OrganizeRule* matchedRule = findMatchingRule(fileName);
+            
+            if (!matchedRule) {
+                item.status = OrganizePreviewItem::NoRule;
+                item.statusMessage = "未找到匹配的分类规则";
+                item.matchedRuleName = "未匹配";
+                plan.categoryCounts[CATEGORY_OTHER]++; // 归为其他
+            } else {
+                item.matchedRuleName = matchedRule->name;
+                item.categoryName = matchedRule->name;
+                
+                // 检查冲突（仅信息展示，不影响规划）
+                if (targetFileExists(matchedRule->targetPath, fileName)) {
+                    item.status = OrganizePreviewItem::Conflict;
+                    item.statusMessage = "分类建议冲突 - 目标位置已存在同名文件";
+                    plan.categoryCounts[CATEGORY_OTHER]++; // 冲突也归为其他
+                } else {
+item.status = OrganizePreviewItem::Movable;
+item.statusMessage = "建议归类到: " + matchedRule->name + " 分类";
+                    plan.categoryCounts[CATEGORY_OTHER]++; // 归为其他
+                }
+            }
+            
+            plan.items.push_back(item);
+        }
+    }
+    
+    // 记录统计结果
+    std::string summaryText = "桌面分类分析完成: " + std::to_string(plan.totalFiles) + " 个项目";
+    if (m_layoutManager) {
+        summaryText += "，分类统计: ";
+        std::vector<FileCategory> fixedCategories = DesktopLayoutManager::getFixedCategories();
+        for (FileCategory cat : fixedCategories) {
+            auto it = plan.categoryCounts.find(cat);
+            if (it != plan.categoryCounts.end() && it->second > 0) {
+                summaryText += DesktopLayoutManager::getCategoryName(cat) + "(" + 
+                               std::to_string(it->second) + ") ";
+            }
+        }
+    }
+    Logger::getInstance().info("FileOrganizer: " + summaryText);
+    
+    return plan;
 }
 
 } // namespace core

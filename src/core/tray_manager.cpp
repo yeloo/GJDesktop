@@ -83,9 +83,9 @@ void TrayManager::createTrayMenu() {
     
     m_trayMenu->addSeparator();
     
-    // 一键整理
-    m_organizeAction = m_trayMenu->addAction("一键整理");
-    connect(m_organizeAction, &QAction::triggered, this, &TrayManager::onOneClickOrganize);
+    // 生成整理规划
+    m_organizeAction = m_trayMenu->addAction("生成整理规划");
+    connect(m_organizeAction, &QAction::triggered, this, &TrayManager::onGenerateOrganizePlan);
     
     // 设置
     m_settingsAction = m_trayMenu->addAction("设置");
@@ -125,11 +125,11 @@ void TrayManager::onShowMainWindow() {
     }
 }
 
-void TrayManager::onOneClickOrganize() {
-    Logger::getInstance().info("TrayManager: 点击了'一键整理'菜单项");
+void TrayManager::onGenerateOrganizePlan() {
+    Logger::getInstance().info("TrayManager: 点击了'生成整理规划'菜单项");
     
     if (m_mainWindow) {
-        // 发射信号给主窗口进行一键整理
+        // 发射信号给主窗口生成整理规划
         QMetaObject::invokeMethod(m_mainWindow, "triggerOrganizeFromTray", Qt::QueuedConnection);
     }
 }

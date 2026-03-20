@@ -12,6 +12,7 @@ namespace ccdesk::core {
 ConfigManager::ConfigManager()
     : m_configPath("config/ccdesk_config.json")
     , m_startupEnabled(false)
+    , m_organizeMode(MODE_DESKTOP_ORGANIZE)  // 默认使用桌面收纳盒模式
 {
     Logger::getInstance().info("ConfigManager: Constructed");
     load();
@@ -19,6 +20,21 @@ ConfigManager::ConfigManager()
 
 ConfigManager::~ConfigManager() {
     Logger::getInstance().info("ConfigManager: Destroyed");
+}
+
+std::string ConfigManager::organizeModeToString(OrganizeMode mode) {
+    switch (mode) {
+        case MODE_LEGACY_FOLDER: return "legacy_folder";
+        case MODE_DESKTOP_ORGANIZE: return "desktop_organize";
+        case MODE_AUTO:
+        default: return "auto";
+    }
+}
+
+ConfigManager::OrganizeMode ConfigManager::organizeModeFromString(const std::string& str) {
+    if (str == "legacy_folder") return MODE_LEGACY_FOLDER;
+    if (str == "desktop_organize") return MODE_DESKTOP_ORGANIZE;
+    return MODE_AUTO;
 }
 
 bool ConfigManager::load() {
@@ -66,7 +82,9 @@ bool ConfigManager::save() {
         
         // 简单的JSON格式
         file << "{\n";
+        file << "  \"version\": \"2.0\",\n";
         file << "  \"startup_enabled\": " << (m_startupEnabled ? "true" : "false") << ",\n";
+        file << "  \"organize_mode\": \"" << organizeModeToString(m_organizeMode) << "\",\n";
         
         file << "  \"partitions\": [\n";
         for (size_t i = 0; i < m_partitions.size(); ++i) {
@@ -74,7 +92,25 @@ bool ConfigManager::save() {
             file << "    {\n";
             file << "      \"id\": \"" << p.id << "\",\n";
             file << "      \"name\": \"" << p.name << "\",\n";
-            file << "      \"targetPath\": \"" << p.targetPath << "\"\n";
+            file << "      \"targetPath\": \"" << p.targetPath << "\",\n";
+            file << "      \"type\": \"" << (p.type == PartitionConfig::TYPE_DESKTOP_ZONE ? "desktop_zone" : "legacy_folder") << "\",\n";
+            
+            if (p.type == PartitionConfig::TYPE_DESKTOP_ZONE) {
+                file << "      \"category\": " << static_cast<int>(p.category) << ",\n";
+                file << "      \"x\": " << p.x << ",\n";
+                file << "      \"y\": " << p.y << ",\n";
+                file << "      \"width\": " << p.width << ",\n";
+                file << "      \"height\": " << p.height << ",\n";
+                file << "      \"backgroundColor\": \"" << p.backgroundColor << "\"\n";
+            } else {
+                file << "      \"category\": 0,\n";
+                file << "      \"x\": 0,\n";
+                file << "      \"y\": 0,\n";
+                file << "      \"width\": 0,\n";
+                file << "      \"height\": 0,\n";
+                file << "      \"backgroundColor\": \"\"\n";
+            }
+            
             file << "    }";
             if (i < m_partitions.size() - 1) file << ",";
             file << "\n";
@@ -89,7 +125,9 @@ bool ConfigManager::save() {
             file << "      \"name\": \"" << r.name << "\",\n";
             file << "      \"extensions\": \"" << r.extensions << "\",\n";
             file << "      \"targetPath\": \"" << r.targetPath << "\",\n";
-            file << "      \"enabled\": " << (r.enabled ? "true" : "false") << "\n";
+            file << "      \"enabled\": " << (r.enabled ? "true" : "false") << ",\n";
+            file << "      \"type\": \"" << (r.type == OrganizeRule::TYPE_CATEGORY_CLASSIFY ? "category_classify" : "legacy_move") << "\",\n";
+            file << "      \"category\": " << static_cast<int>(r.category) << "\n";
             file << "    }";
             if (i < m_rules.size() - 1) file << ",";
             file << "\n";
@@ -110,6 +148,23 @@ bool ConfigManager::parseConfig(const std::string& content) {
     // 简单的JSON解析（不使用外部库）
     Logger::getInstance().info("ConfigManager: Parsing configuration");
     
+    // 清空现有数据
+    m_partitions.clear();
+    m_rules.clear();
+    
+    // 检查版本号
+    size_t versionPos = content.find("\"version\"");
+    std::string version = "1.0";
+    if (versionPos != std::string::npos) {
+        size_t colonPos = content.find(":", versionPos);
+        size_t quoteStart = content.find("\"", colonPos);
+        size_t quoteEnd = content.find("\"", quoteStart + 1);
+        if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+            version = content.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+        }
+    }
+    Logger::getInstance().info("ConfigManager: Config version: " + version);
+    
     // 检查startup_enabled
     size_t startupPos = content.find("\"startup_enabled\"");
     if (startupPos != std::string::npos) {
@@ -120,7 +175,19 @@ bool ConfigManager::parseConfig(const std::string& content) {
         }
     }
     
-    // 解析分区数组 - 在 "partitions": [ 和 ] 之间提取
+    // 检查organize_mode（新版配置）
+    size_t modePos = content.find("\"organize_mode\"");
+    if (modePos != std::string::npos) {
+        size_t colonPos = content.find(":", modePos);
+        size_t quoteStart = content.find("\"", colonPos);
+        size_t quoteEnd = content.find("\"", quoteStart + 1);
+        if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+            std::string modeStr = content.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+            m_organizeMode = organizeModeFromString(modeStr);
+        }
+    }
+    
+    // 解析分区数组
     size_t partitionsStart = content.find("\"partitions\"");
     if (partitionsStart != std::string::npos) {
         size_t arrayStart = content.find("[", partitionsStart);
@@ -136,7 +203,7 @@ bool ConfigManager::parseConfig(const std::string& content) {
                 
                 std::string objStr = partitionsStr.substr(objStart, objEnd - objStart + 1);
                 
-                // 提取 id, name, targetPath
+                // 提取分区配置
                 PartitionConfig pc;
                 
                 // 提取 id
@@ -172,16 +239,90 @@ bool ConfigManager::parseConfig(const std::string& content) {
                     }
                 }
                 
-                if (!pc.id.empty() && !pc.name.empty()) {
-                    m_partitions.push_back(pc);
+                // 提取 type（新版）
+                size_t typePos = objStr.find("\"type\"");
+                if (typePos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", typePos);
+                    size_t quoteStart = objStr.find("\"", colonPos);
+                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
+                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+                        std::string typeStr = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+                        pc.type = (typeStr == "desktop_zone") ? PartitionConfig::TYPE_DESKTOP_ZONE 
+                                                              : PartitionConfig::TYPE_LEGACY_FOLDER;
+                    }
                 }
                 
+                // 提取 category（新版）
+                size_t categoryPos = objStr.find("\"category\"");
+                if (categoryPos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", categoryPos);
+                    size_t valueStart = objStr.find_first_of("0123456789", colonPos);
+                    size_t valueEnd = objStr.find_first_not_of("0123456789", valueStart);
+                    if (valueStart != std::string::npos) {
+                        std::string catStr = objStr.substr(valueStart, valueEnd - valueStart);
+                        pc.category = static_cast<FileCategory>(std::stoi(catStr));
+                    }
+                }
+                
+                // 提取位置和大小（新版）
+                size_t xPos = objStr.find("\"x\"");
+                if (xPos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", xPos);
+                    size_t valueStart = objStr.find_first_of("0123456789-", colonPos);
+                    size_t valueEnd = objStr.find_first_not_of("0123456789-", valueStart);
+                    if (valueStart != std::string::npos) {
+                        pc.x = std::stoi(objStr.substr(valueStart, valueEnd - valueStart));
+                    }
+                }
+                
+                size_t yPos = objStr.find("\"y\"");
+                if (yPos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", yPos);
+                    size_t valueStart = objStr.find_first_of("0123456789-", colonPos);
+                    size_t valueEnd = objStr.find_first_not_of("0123456789-", valueStart);
+                    if (valueStart != std::string::npos) {
+                        pc.y = std::stoi(objStr.substr(valueStart, valueEnd - valueStart));
+                    }
+                }
+                
+                size_t widthPos = objStr.find("\"width\"");
+                if (widthPos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", widthPos);
+                    size_t valueStart = objStr.find_first_of("0123456789", colonPos);
+                    size_t valueEnd = objStr.find_first_not_of("0123456789", valueStart);
+                    if (valueStart != std::string::npos) {
+                        pc.width = std::stoi(objStr.substr(valueStart, valueEnd - valueStart));
+                    }
+                }
+                
+                size_t heightPos = objStr.find("\"height\"");
+                if (heightPos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", heightPos);
+                    size_t valueStart = objStr.find_first_of("0123456789", colonPos);
+                    size_t valueEnd = objStr.find_first_not_of("0123456789", valueStart);
+                    if (valueStart != std::string::npos) {
+                        pc.height = std::stoi(objStr.substr(valueStart, valueEnd - valueStart));
+                    }
+                }
+                
+                // 提取背景颜色（新版）
+                size_t colorPos = objStr.find("\"backgroundColor\"");
+                if (colorPos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", colorPos);
+                    size_t quoteStart = objStr.find("\"", colonPos);
+                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
+                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+                        pc.backgroundColor = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+                    }
+                }
+                
+                m_partitions.push_back(pc);
                 objStart = objEnd + 1;
             }
         }
     }
     
-    // 解析规则数组 - 同上
+    // 解析规则数组
     size_t rulesStart = content.find("\"rules\"");
     if (rulesStart != std::string::npos) {
         size_t arrayStart = content.find("[", rulesStart);
@@ -189,6 +330,7 @@ bool ConfigManager::parseConfig(const std::string& content) {
         if (arrayStart != std::string::npos && arrayEnd != std::string::npos) {
             std::string rulesStr = content.substr(arrayStart + 1, arrayEnd - arrayStart - 1);
             
+            // 简单的对象提取：逐个 { } 对
             size_t objStart = 0;
             while ((objStart = rulesStr.find("{", objStart)) != std::string::npos) {
                 size_t objEnd = rulesStr.find("}", objStart);
@@ -196,7 +338,7 @@ bool ConfigManager::parseConfig(const std::string& content) {
                 
                 std::string objStr = rulesStr.substr(objStart, objEnd - objStart + 1);
                 
-                // 提取规则字段
+                // 提取规则配置
                 OrganizeRule rule;
                 
                 // 提取 id
@@ -243,78 +385,127 @@ bool ConfigManager::parseConfig(const std::string& content) {
                     }
                 }
                 
-                // 提取 enabled (布尔值)
+                // 提取 enabled
                 size_t enabledPos = objStr.find("\"enabled\"");
                 if (enabledPos != std::string::npos) {
                     size_t colonPos = objStr.find(":", enabledPos);
                     size_t truePos = objStr.find("true", colonPos);
                     rule.enabled = (truePos != std::string::npos && truePos < colonPos + 20);
-                } else {
-                    rule.enabled = true;  // 默认启用
                 }
                 
-                if (!rule.id.empty() && !rule.name.empty()) {
-                    m_rules.push_back(rule);
+                // 提取 type（新版）
+                size_t typePos = objStr.find("\"type\"");
+                if (typePos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", typePos);
+                    size_t quoteStart = objStr.find("\"", colonPos);
+                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
+                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
+                        std::string typeStr = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+                        rule.type = (typeStr == "category_classify") ? OrganizeRule::TYPE_CATEGORY_CLASSIFY 
+                                                                     : OrganizeRule::TYPE_LEGACY_MOVE;
+                    }
                 }
                 
+                // 提取 category（新版）
+                size_t categoryPos = objStr.find("\"category\"");
+                if (categoryPos != std::string::npos) {
+                    size_t colonPos = objStr.find(":", categoryPos);
+                    size_t valueStart = objStr.find_first_of("0123456789", colonPos);
+                    size_t valueEnd = objStr.find_first_not_of("0123456789", valueStart);
+                    if (valueStart != std::string::npos) {
+                        std::string catStr = objStr.substr(valueStart, valueEnd - valueStart);
+                        rule.category = static_cast<FileCategory>(std::stoi(catStr));
+                    }
+                }
+                
+                m_rules.push_back(rule);
                 objStart = objEnd + 1;
             }
         }
     }
     
-    // 若解析后仍然没有规则或分区，应用默认配置
-    if (m_rules.empty()) {
-        Logger::getInstance().warning("ConfigManager: No rules found during parse, applying defaults");
+    // 如果没有配置，创建默认配置
+    if (m_partitions.empty() && m_rules.empty()) {
+        Logger::getInstance().info("ConfigManager: Empty config, creating default");
         createDefaultConfig();
     }
     
-    if (m_partitions.empty()) {
-        Logger::getInstance().warning("ConfigManager: No partitions found during parse, applying defaults");
-        // 注意：仅创建默认分区，不再创建默认规则（避免重复）
-        PartitionConfig partition1;
-        partition1.id = "partition_1";
-        partition1.name = "Documents";
-        partition1.targetPath = ".\\Documents";
-        m_partitions.push_back(partition1);
-    }
-    
+    Logger::getInstance().info("ConfigManager: Parsed " + std::to_string(m_partitions.size()) + 
+                              " partitions and " + std::to_string(m_rules.size()) + " rules");
     return true;
 }
 
 void ConfigManager::createDefaultConfig() {
     Logger::getInstance().info("ConfigManager: Creating default configuration");
     
-    // 默认规则
-    OrganizeRule docRule;
-    docRule.id = "rule_docs";
-    docRule.name = "Documents";
-    docRule.extensions = "pdf,doc,docx,xls,xlsx,ppt,pptx";
-    docRule.targetPath = ".\\Documents";
-    docRule.enabled = true;
-    m_rules.push_back(docRule);
+    // 清除现有数据
+    m_partitions.clear();
+    m_rules.clear();
     
-    OrganizeRule imgRule;
-    imgRule.id = "rule_images";
-    imgRule.name = "Images";
-    imgRule.extensions = "jpg,jpeg,png,gif,bmp,svg";
-    imgRule.targetPath = ".\\Pictures";
-    imgRule.enabled = true;
-    m_rules.push_back(imgRule);
+    // 设置默认整理模式为桌面收纳盒
+    m_organizeMode = MODE_DESKTOP_ORGANIZE;
     
-    OrganizeRule videoRule;
-    videoRule.id = "rule_videos";
-    videoRule.name = "Videos";
-    videoRule.extensions = "mp4,avi,mov,mkv,flv,wmv";
-    videoRule.targetPath = ".\\Videos";
-    videoRule.enabled = true;
-    m_rules.push_back(videoRule);
+    // 创建默认桌面收纳盒配置
+    createDefaultDesktopOrganizeConfig();
+}
+
+void ConfigManager::createDefaultDesktopOrganizeConfig() {
+    Logger::getInstance().info("ConfigManager: Creating default desktop organize configuration");
     
-    // 默认分区
-    PartitionConfig partition1;
-    partition1.id = "partition_1";
-    partition1.name = "Documents";
-    partition1.targetPath = ".\\Documents";
-    m_partitions.push_back(partition1);
+    // 创建6个桌面区域分区
+    std::vector<FileCategory> categories = DesktopLayoutManager::getFixedCategories();
+    
+    for (size_t i = 0; i < categories.size(); ++i) {
+        PartitionConfig partition;
+        partition.id = "desktop_zone_" + std::to_string(i);
+        partition.name = DesktopLayoutManager::getCategoryName(categories[i]);
+        partition.type = PartitionConfig::TYPE_DESKTOP_ZONE;
+        partition.category = categories[i];
+        
+        // 默认位置和大小（将在布局时计算）
+        partition.x = 0;
+        partition.y = 0;
+        partition.width = 0;
+        partition.height = 0;
+        // 修复：使用新版 getCategoryColorCode 接口
+        partition.backgroundColor = DesktopLayoutManager::getCategoryColorCode(categories[i]);
+        
+        m_partitions.push_back(partition);
+    }
+    
+    // 创建默认分类规则
+    std::vector<std::pair<FileCategory, std::vector<std::string>>> categoryRules = {
+        {CATEGORY_SHORTCUT, {".lnk", ".url"}},
+        {CATEGORY_DOCUMENT, {".doc", ".docx", ".pdf", ".txt", ".ppt", ".pptx", ".xls", ".xlsx", ".md", ".rtf"}},
+        {CATEGORY_IMAGE, {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp", ".tiff", ".ico"}},
+        {CATEGORY_VIDEO, {".mp4", ".avi", ".mov", ".wmv", ".flv", ".mkv", ".rmvb", ".m4v"}},
+        {CATEGORY_ARCHIVE, {".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".iso"}}
+    };
+    
+    for (size_t i = 0; i < categoryRules.size(); ++i) {
+        OrganizeRule rule;
+        rule.id = "category_rule_" + std::to_string(i);
+        rule.name = DesktopLayoutManager::getCategoryName(categoryRules[i].first);
+        rule.type = OrganizeRule::TYPE_CATEGORY_CLASSIFY;
+        rule.category = categoryRules[i].first;
+        rule.enabled = true;
+        
+        // 拼接扩展名
+        std::string extensions;
+        for (size_t j = 0; j < categoryRules[i].second.size(); ++j) {
+            if (j > 0) extensions += ",";
+            extensions += categoryRules[i].second[j];
+        }
+        rule.extensions = extensions;
+        
+        // 目标路径留空（不移动文件）
+        rule.targetPath = "";
+        
+        m_rules.push_back(rule);
+    }
+    
+    Logger::getInstance().info("ConfigManager: Created " + std::to_string(m_partitions.size()) + 
+                              " desktop zones and " + std::to_string(m_rules.size()) + " category rules");
 }
 
 void ConfigManager::addPartition(const PartitionConfig& partition) {
@@ -323,12 +514,11 @@ void ConfigManager::addPartition(const PartitionConfig& partition) {
 }
 
 void ConfigManager::removePartition(const std::string& id) {
-    for (auto it = m_partitions.begin(); it != m_partitions.end(); ++it) {
-        if (it->id == id) {
-            Logger::getInstance().info("ConfigManager: Removed partition: " + it->name);
-            m_partitions.erase(it);
-            return;
-        }
+    auto it = std::remove_if(m_partitions.begin(), m_partitions.end(),
+                           [&id](const PartitionConfig& p) { return p.id == id; });
+    if (it != m_partitions.end()) {
+        m_partitions.erase(it, m_partitions.end());
+        Logger::getInstance().info("ConfigManager: Removed partition with id: " + id);
     }
 }
 
@@ -342,12 +532,11 @@ void ConfigManager::addOrganizeRule(const OrganizeRule& rule) {
 }
 
 void ConfigManager::removeOrganizeRule(const std::string& id) {
-    for (auto it = m_rules.begin(); it != m_rules.end(); ++it) {
-        if (it->id == id) {
-            Logger::getInstance().info("ConfigManager: Removed rule: " + it->name);
-            m_rules.erase(it);
-            return;
-        }
+    auto it = std::remove_if(m_rules.begin(), m_rules.end(),
+                           [&id](const OrganizeRule& r) { return r.id == id; });
+    if (it != m_rules.end()) {
+        m_rules.erase(it, m_rules.end());
+        Logger::getInstance().info("ConfigManager: Removed rule with id: " + id);
     }
 }
 
@@ -362,7 +551,16 @@ bool ConfigManager::isStartupEnabled() const {
 void ConfigManager::setStartupEnabled(bool enabled) {
     m_startupEnabled = enabled;
     Logger::getInstance().info("ConfigManager: Startup enabled set to: " + 
-                             std::string(enabled ? "true" : "false"));
+                              std::string(enabled ? "true" : "false"));
+}
+
+ConfigManager::OrganizeMode ConfigManager::getOrganizeMode() const {
+    return m_organizeMode;
+}
+
+void ConfigManager::setOrganizeMode(OrganizeMode mode) {
+    m_organizeMode = mode;
+    Logger::getInstance().info("ConfigManager: Organize mode set to: " + organizeModeToString(mode));
 }
 
 } // namespace ccdesk::core
