@@ -43,7 +43,7 @@ std::string DesktopLayoutManager::getFileExtension(const std::string& filePath) 
 }
 
 bool DesktopLayoutManager::isExtensionInList(const std::string& extension,
-                                            const char* extensions[], 
+                                            const char* const extensions[],
                                             size_t count) const
 {
     for (size_t i = 0; i < count; ++i) {

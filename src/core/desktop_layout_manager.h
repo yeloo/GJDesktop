@@ -83,7 +83,7 @@ private:
     
     // 检查扩展名是否在数组中
     bool isExtensionInList(const std::string& extension, 
-                          const char* extensions[], size_t count) const;
+                          const char* const extensions[], size_t count) const;
     
     // 获取文件扩展名（小写）
     std::string getFileExtension(const std::string& filePath) const;
