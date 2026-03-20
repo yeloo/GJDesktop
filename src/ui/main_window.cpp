@@ -268,44 +268,53 @@ void MainWindow::onPreviewCancelled() {
 }
 
 QString MainWindow::formatPreviewItem(const OrganizePreviewItem& item) const {
-    std::stringstream ss;
-    ss << "[" << item.fileName << "] 分类建议: ";
+    // Windows下std::string是本地编码（GBK），使用fromLocal8Bit正确转换
+    QString fileNameStr = QString::fromLocal8Bit(item.fileName.c_str());
+    QString categoryStr = QString::fromStdString(item.categoryName);
+    
+    QString result;
+    result += "[" + fileNameStr + "] 分类建议: ";
     
     switch (item.status) {
         case OrganizePreviewItem::Movable:
-            ss << "建议归类到 " << item.categoryName << " 分类";
+            result += "建议归类到 " + categoryStr + " 分类";
             break;
         case OrganizePreviewItem::Conflict:
-            ss << "分类建议冲突 - 分类: " << item.categoryName;
+            result += "分类建议冲突 - 分类: " + categoryStr;
             break;
         case OrganizePreviewItem::NoRule:
-            ss << "未匹配项 - 未找到匹配的分类规则";
+            result += "未匹配项 - 未找到匹配的分类规则";
             break;
     }
     
-    return QString::fromStdString(ss.str());
+    return result;
 }
 
 QString MainWindow::formatResultItem(const OrganizeResult& result) const {
-    std::stringstream ss;
-    ss << "[" << result.fileName << "] ";
+    // Windows下std::string是本地编码（GBK），使用fromLocal8Bit正确转换文件名
+    QString fileNameStr = QString::fromLocal8Bit(result.fileName.c_str());
+    QString messageStr = QString::fromStdString(result.message);
+    QString targetPathStr = QString::fromStdString(result.targetPath);
+    
+    QString resultStr;
+    resultStr += "[" + fileNameStr + "] ";
     
     switch (result.finalStatus) {
         case OrganizeResult::Success:
-            ss << "✓ 成功 - 可归类到 " << result.targetPath;
+            resultStr += "✓ 成功 - 可归类到 " + targetPathStr;
             break;
         case OrganizeResult::SkippedConflict:
-            ss << "⊗ 跳过 - 分类冲突: " << result.message;
+            resultStr += "⊗ 跳过 - 分类冲突: " + messageStr;
             break;
         case OrganizeResult::Failed:
-            ss << "✗ 失败 - " << result.message;
+            resultStr += "✗ 失败 - " + messageStr;
             break;
         case OrganizeResult::NoRule:
-            ss << "○ 未匹配 - " << result.message;
+            resultStr += "○ 未匹配 - " + messageStr;
             break;
     }
     
-    return QString::fromStdString(ss.str());
+    return resultStr;
 }
 
 void MainWindow::showResultReport(const OrganizeSummary& summary) {
@@ -504,7 +513,7 @@ void MainWindow::showOrganizePlan(const ccdesk::core::OrganizePlan& plan) {
                 "<tr><td><b>总文件数：</b></td><td>%2 个文件</td></tr>"
                 "</table>"
                 "</div>")
-            .arg(QString::fromStdString(plan.desktopPath))
+            .arg(QString::fromLocal8Bit(plan.desktopPath.c_str()))
             .arg(plan.totalFiles),
         planDialog
     );
@@ -557,7 +566,7 @@ void MainWindow::showOrganizePlan(const ccdesk::core::OrganizePlan& plan) {
         
         for (const auto& item : plan.items) {
             QString itemText = QString("[%1] → %2")
-                .arg(QString::fromStdString(item.fileName))
+                .arg(QString::fromLocal8Bit(item.fileName.c_str()))
                 .arg(QString::fromStdString(item.categoryName));
             detailList->addItem(itemText);
         }
