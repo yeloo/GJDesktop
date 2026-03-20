@@ -4,9 +4,37 @@
 #include <algorithm>
 #include <iostream>
 
+#ifdef _WIN32
+#include <QString> // 仅在Windows下需要转换
+#endif
+
 namespace fs = std::filesystem;
 namespace ccdesk {
 namespace core {
+
+// 辅助函数：将 filesystem::path 转换为 UTF-8 编码的 std::string
+// Windows: path.wstring() -> QString -> UTF-8 -> std::string
+// Linux/macOS: 直接使用 path.string()
+static std::string pathToUtf8String(const fs::path& path) {
+#ifdef _WIN32
+    // Windows: 从 UTF-16 转换为 UTF-8
+    return QString::fromStdWString(path.wstring()).toUtf8().toStdString();
+#else
+    // Linux/macOS: 直接使用 UTF-8
+    return path.string();
+#endif
+}
+
+// 辅助函数：将 filesystem::path::filename 转换为 UTF-8 编码的 std::string
+static std::string filenameToUtf8String(const fs::path& path) {
+#ifdef _WIN32
+    // Windows: 从 UTF-16 转换为 UTF-8
+    return QString::fromStdWString(path.filename().wstring()).toUtf8().toStdString();
+#else
+    // Linux/macOS: 直接使用 UTF-8
+    return path.filename().string();
+#endif
+}
 
 FileOrganizer::FileOrganizer()
     : m_layoutManager(nullptr)
@@ -46,7 +74,7 @@ std::vector<std::string> FileOrganizer::scanDesktopFiles() const {
         for (const auto& entry : fs::directory_iterator(m_desktopPath)) {
             // 扫描普通文件和文件夹，不扫描子目录
             if (entry.is_regular_file() || entry.is_directory()) {
-                files.push_back(entry.path().string());
+                files.push_back(pathToUtf8String(entry.path()));
             }
         }
         Logger::getInstance().info("FileOrganizer: Scanned desktop, found " + 
@@ -138,55 +166,56 @@ bool FileOrganizer::moveFile(const std::string& sourcePath,
 }
 
 std::vector<OrganizePreviewItem> FileOrganizer::generatePreview() const {
-    // 如果有布局管理器，使用新的分类预览
+    // 保持原有逻辑：如果有布局管理器，使用新分类预览；否则使用旧规则预览
     if (m_layoutManager) {
         return generateCategoryPreview();
     }
-    
-    // 否则使用旧的规则预览（向后兼容）
+
+    // 否则使用旧规则预览（向后兼容）
     Logger::getInstance().info("FileOrganizer: Generating preview using legacy rules...");
-    
+
     std::vector<OrganizePreviewItem> preview;
-    
+
     auto files = scanDesktopFiles();
-    
+
     for (const auto& filePath : files) {
         fs::path path(filePath);
-        std::string fileName = path.filename().string();
-        
+        std::string fileName = filenameToUtf8String(path);
+
         OrganizePreviewItem item;
         item.sourcePath = filePath;
         item.fileName = fileName;
-        
+
         const OrganizeRule* matchedRule = findMatchingRule(fileName);
-        
+
         if (!matchedRule) {
             item.status = OrganizePreviewItem::NoRule;
             item.statusMessage = "未找到匹配的分类规则";
             item.matchedRuleName = "未匹配";
+            item.categoryName = "未匹配";
         } else {
             item.matchedRuleName = matchedRule->name;
             item.categoryName = matchedRule->name;
-            
-            // 检查冲突（仅用于信息显示，不会实际移动）
+
+            // 检查冲突（仅信息展示，不影响规划）
             if (targetFileExists(matchedRule->targetPath, fileName)) {
                 item.status = OrganizePreviewItem::Conflict;
                 item.statusMessage = "分类建议冲突 - 目标位置已存在同名文件";
             } else {
                 item.status = OrganizePreviewItem::Movable;
-                item.statusMessage = "建议归类到 " + matchedRule->name + " 分类";
+                item.statusMessage = "建议归类到: " + matchedRule->name + " 分类";
             }
         }
-        
+
         preview.push_back(item);
     }
-    
-    Logger::getInstance().info("FileOrganizer: Preview generated with " + 
+
+    Logger::getInstance().info("FileOrganizer: Preview generated with " +
                              std::to_string(preview.size()) + " items");
-    
+
     // 保存预览用于后续执行
     const_cast<FileOrganizer*>(this)->m_currentPreview = preview;
-    
+
     return preview;
 }
 
@@ -214,7 +243,7 @@ std::vector<OrganizePreviewItem> FileOrganizer::generateCategoryPreview() const 
         }
         
         fs::path path(filePath);
-        std::string fileName = path.filename().string();
+        std::string fileName = filenameToUtf8String(path);
         
         OrganizePreviewItem item;
         item.sourcePath = filePath;
@@ -348,7 +377,7 @@ OrganizePlan FileOrganizer::generateOrganizePlan() {
             }
             
             fs::path path(filePath);
-            std::string fileName = path.filename().string();
+            std::string fileName = filenameToUtf8String(path);
             
             // 分类文件
             FileCategory category = m_layoutManager->classifyFile(filePath);
@@ -362,52 +391,62 @@ OrganizePlan FileOrganizer::generateOrganizePlan() {
             item.fileName = fileName;
             item.categoryName = DesktopLayoutManager::getCategoryName(category);
             item.matchedRuleName = item.categoryName;
-item.status = OrganizePreviewItem::Movable;
-item.statusMessage = "属于: " + item.categoryName + " 分类";
-            
+            item.status = OrganizePreviewItem::Movable;
+            item.statusMessage = "属于: " + item.categoryName + " 分类";
+
             plan.items.push_back(item);
         }
     } else {
         // 如果没有布局管理器，使用旧规则
         Logger::getInstance().warning("FileOrganizer: 没有布局管理器，使用旧规则生成规划");
-        
+
         for (const auto& filePath : files) {
             // 检查取消标志
             if (isCancelled()) {
                 Logger::getInstance().info("FileOrganizer: 规划生成被取消");
                 break;
             }
-            
+
             fs::path path(filePath);
-            std::string fileName = path.filename().string();
-            
+            std::string fileName = filenameToUtf8String(path);
+
             OrganizePreviewItem item;
             item.sourcePath = filePath;
             item.fileName = fileName;
-            
+
             const OrganizeRule* matchedRule = findMatchingRule(fileName);
-            
+
             if (!matchedRule) {
                 item.status = OrganizePreviewItem::NoRule;
                 item.statusMessage = "未找到匹配的分类规则";
                 item.matchedRuleName = "未匹配";
+                item.categoryName = "未匹配";
                 plan.categoryCounts[CATEGORY_OTHER]++; // 归为其他
             } else {
                 item.matchedRuleName = matchedRule->name;
                 item.categoryName = matchedRule->name;
-                
+
+                // 尝试根据规则名称映射到分类
+                FileCategory ruleCategory = CATEGORY_OTHER;
+                if (matchedRule->name == "快捷方式") ruleCategory = CATEGORY_SHORTCUT;
+                else if (matchedRule->name == "文件夹") ruleCategory = CATEGORY_FOLDER;
+                else if (matchedRule->name == "文档") ruleCategory = CATEGORY_DOCUMENT;
+                else if (matchedRule->name == "图片") ruleCategory = CATEGORY_IMAGE;
+                else if (matchedRule->name == "视频") ruleCategory = CATEGORY_VIDEO;
+                else if (matchedRule->name == "压缩包") ruleCategory = CATEGORY_ARCHIVE;
+
                 // 检查冲突（仅信息展示，不影响规划）
                 if (targetFileExists(matchedRule->targetPath, fileName)) {
                     item.status = OrganizePreviewItem::Conflict;
                     item.statusMessage = "分类建议冲突 - 目标位置已存在同名文件";
-                    plan.categoryCounts[CATEGORY_OTHER]++; // 冲突也归为其他
+                    plan.categoryCounts[ruleCategory]++; // 冲突也归入对应分类
                 } else {
-item.status = OrganizePreviewItem::Movable;
-item.statusMessage = "建议归类到: " + matchedRule->name + " 分类";
-                    plan.categoryCounts[CATEGORY_OTHER]++; // 归为其他
+                    item.status = OrganizePreviewItem::Movable;
+                    item.statusMessage = "建议归类到: " + matchedRule->name + " 分类";
+                    plan.categoryCounts[ruleCategory]++; // 归入对应分类
                 }
             }
-            
+
             plan.items.push_back(item);
         }
     }

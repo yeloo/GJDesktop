@@ -268,9 +268,9 @@ void MainWindow::onPreviewCancelled() {
 }
 
 QString MainWindow::formatPreviewItem(const OrganizePreviewItem& item) const {
-    // Windows下std::string是本地编码（GBK），使用fromLocal8Bit正确转换
-    QString fileNameStr = QString::fromLocal8Bit(item.fileName.c_str());
-    QString categoryStr = QString::fromStdString(item.categoryName);
+    // 内部std::string统一按UTF-8存储，使用fromUtf8解码
+    QString fileNameStr = QString::fromUtf8(item.fileName.c_str());
+    QString categoryStr = QString::fromUtf8(item.categoryName.c_str());
     
     QString result;
     result += "[" + fileNameStr + "] 分类建议: ";
@@ -291,10 +291,10 @@ QString MainWindow::formatPreviewItem(const OrganizePreviewItem& item) const {
 }
 
 QString MainWindow::formatResultItem(const OrganizeResult& result) const {
-    // Windows下std::string是本地编码（GBK），使用fromLocal8Bit正确转换文件名
-    QString fileNameStr = QString::fromLocal8Bit(result.fileName.c_str());
-    QString messageStr = QString::fromStdString(result.message);
-    QString targetPathStr = QString::fromStdString(result.targetPath);
+    // 内部std::string统一按UTF-8存储，使用fromUtf8解码
+    QString fileNameStr = QString::fromUtf8(result.fileName.c_str());
+    QString messageStr = QString::fromUtf8(result.message.c_str());
+    QString targetPathStr = QString::fromUtf8(result.targetPath.c_str());
     
     QString resultStr;
     resultStr += "[" + fileNameStr + "] ";
@@ -513,7 +513,7 @@ void MainWindow::showOrganizePlan(const ccdesk::core::OrganizePlan& plan) {
                 "<tr><td><b>总文件数：</b></td><td>%2 个文件</td></tr>"
                 "</table>"
                 "</div>")
-            .arg(QString::fromLocal8Bit(plan.desktopPath.c_str()))
+            .arg(QString::fromUtf8(plan.desktopPath.c_str()))
             .arg(plan.totalFiles),
         planDialog
     );
@@ -566,8 +566,8 @@ void MainWindow::showOrganizePlan(const ccdesk::core::OrganizePlan& plan) {
         
         for (const auto& item : plan.items) {
             QString itemText = QString("[%1] → %2")
-                .arg(QString::fromLocal8Bit(item.fileName.c_str()))
-                .arg(QString::fromStdString(item.categoryName));
+                .arg(QString::fromUtf8(item.fileName.c_str()))
+                .arg(QString::fromUtf8(item.categoryName.c_str()));
             detailList->addItem(itemText);
         }
         
