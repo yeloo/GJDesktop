@@ -8,12 +8,20 @@
 
 #include <QApplication>
 #include <QStandardPaths>
+#include <QDir>
 #include <filesystem>
 #include <iostream>
 
 namespace fs = std::filesystem;
 
 namespace ccdesk::core {
+
+// 辅助函数：将 QString 转换为 UTF-8 编码的 std::string
+// Windows: QString (UTF-16) -> toUtf8() -> std::string (UTF-8)
+// Linux/macOS: QString (UTF-8) -> toUtf8() -> std::string (UTF-8)
+static std::string qstringToUtf8String(const QString& qstr) {
+    return qstr.toUtf8().toStdString();
+}
 
 // 静态单例实例（使用 Meyer's Singleton Pattern）
 
@@ -38,16 +46,19 @@ AppManager::AppManager()
         #ifdef _WIN32
             const char* userProfile = std::getenv("USERPROFILE");
             if (userProfile) {
-                m_desktopPath = std::string(userProfile) + "\\Desktop";
+                // Windows 环境变量是 GBK 编码，需要转换为 UTF-8
+                m_desktopPath = qstringToUtf8String(QString::fromLocal8Bit(userProfile) + "\\Desktop");
             }
         #else
             const char* home = std::getenv("HOME");
             if (home) {
+                // Linux/macOS 环境变量是 UTF-8 编码
                 m_desktopPath = std::string(home) + "/Desktop";
             }
         #endif
     } else {
-        m_desktopPath = desktopPath.toStdString();
+        // Qt 返回的 QString 直接转换为 UTF-8
+        m_desktopPath = qstringToUtf8String(desktopPath);
     }
     
     // 验证桌面路径是否存在
@@ -118,6 +129,17 @@ bool AppManager::initialize() {
 bool AppManager::initializeLogger() {
     // Logger 单例，直接获取引用并存储指针
     m_logger = &Logger::getInstance();
+
+    // 确保日志路径已设置（main.cpp 已设置，但做双重检查）
+    if (m_logger && m_logger->getLogPath().empty()) {
+        QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        QString logPath = appDataDir + "/logs/ccdesk.log";
+        QDir dir(appDataDir);
+        dir.mkpath(appDataDir + "/logs");
+        // 转换为 UTF-8
+        m_logger->setLogPath(qstringToUtf8String(logPath));
+    }
+
     return m_logger != nullptr;
 }
 

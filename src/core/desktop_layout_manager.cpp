@@ -5,10 +5,25 @@
 #include <algorithm>
 #include <cstring>
 
+#ifdef _WIN32
+#include <QString> // 仅在Windows下需要转换
+#endif
+
 namespace fs = std::filesystem;
 
 namespace ccdesk {
 namespace core {
+
+// 辅助函数：将 fs::path 转换为 UTF-8 编码的 std::string（仅用于日志输出）
+#ifdef _WIN32
+static std::string pathToUtf8String(const fs::path& path) {
+    return QString::fromStdWString(path.wstring()).toUtf8().toStdString();
+}
+#else
+static std::string pathToUtf8String(const fs::path& path) {
+    return path.string();
+}
+#endif
 
 DesktopLayoutManager::DesktopLayoutManager()
 {
@@ -31,15 +46,25 @@ std::string DesktopLayoutManager::getDesktopPath() const
     return m_desktopPath;
 }
 
-std::string DesktopLayoutManager::getFileExtension(const std::string& filePath) const
+std::string DesktopLayoutManager::getFileExtension(const fs::path& filePath) const
 {
-    size_t dotPos = filePath.find_last_of('.');
-    if (dotPos != std::string::npos && dotPos > 0 && dotPos < filePath.length() - 1) {
-        std::string ext = filePath.substr(dotPos);
-        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-        return ext;
+    // 直接基于 fs::path::extension() 获取扩展名
+    // 不再通过字符串查找，避免编码问题
+    fs::path extPath = filePath.extension();
+    if (extPath.empty()) {
+        return "";
     }
-    return "";
+    
+    // 扩展名统一转小写
+#ifdef _WIN32
+    // Windows: 从 UTF-16 转换为 UTF-8，避免编码问题
+    std::string ext = QString::fromStdWString(extPath.wstring()).toUtf8().toStdString();
+#else
+    // Linux/macOS: 直接使用 string()
+    std::string ext = extPath.string();
+#endif
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    return ext;
 }
 
 bool DesktopLayoutManager::isExtensionInList(const std::string& extension,
@@ -54,19 +79,19 @@ bool DesktopLayoutManager::isExtensionInList(const std::string& extension,
     return false;
 }
 
-FileCategory DesktopLayoutManager::classifyFile(const std::string& filePath) const
+FileCategory DesktopLayoutManager::classifyFile(const fs::path& filePath) const
 {
     if (filePath.empty()) {
         return CATEGORY_OTHER;
     }
     
     try {
-        // 1. 检查是否为文件夹
+        // 1. 检查是否为文件夹 - 直接使用 fs::path
         if (fs::is_directory(filePath)) {
             return CATEGORY_FOLDER;
         }
         
-        // 2. 获取扩展名
+        // 2. 获取扩展名 - 直接基于 fs::path
         std::string extension = getFileExtension(filePath);
         if (extension.empty()) {
             return CATEGORY_OTHER;
@@ -106,8 +131,9 @@ FileCategory DesktopLayoutManager::classifyFile(const std::string& filePath) con
         return CATEGORY_OTHER;
         
     } catch (const std::exception& e) {
+        // 日志输出时单独转换为 UTF-8
         Logger::getInstance().error("DesktopLayoutManager: 分类文件失败: " + 
-                                   std::string(e.what()) + " path: " + filePath);
+                                   std::string(e.what()) + " path: " + pathToUtf8String(filePath));
         return CATEGORY_OTHER;
     }
 }

@@ -3,8 +3,11 @@
 
 #include <string>
 #include <vector>
+#include <filesystem>
 
 namespace ccdesk::core {
+
+namespace fs = std::filesystem;
 
 // 文件分类枚举 - 固定6大类 + 其他（内部未匹配标记）
 enum FileCategory {
@@ -39,8 +42,8 @@ public:
     // 获取桌面路径
     std::string getDesktopPath() const;
     
-    // 分类文件（核心分类逻辑）
-    FileCategory classifyFile(const std::string& filePath) const;
+    // 分类文件（核心分类逻辑）- 改为使用 fs::path
+    FileCategory classifyFile(const fs::path& filePath) const;
     
     // 获取分类名称
     static std::string getCategoryName(FileCategory category);
@@ -85,8 +88,8 @@ private:
     bool isExtensionInList(const std::string& extension, 
                           const char* const extensions[], size_t count) const;
     
-    // 获取文件扩展名（小写）
-    std::string getFileExtension(const std::string& filePath) const;
+    // 获取文件扩展名（小写）- 改为使用 fs::path
+    std::string getFileExtension(const fs::path& filePath) const;
 };
 
 } // namespace ccdesk::core

@@ -36,6 +36,19 @@ static std::string filenameToUtf8String(const fs::path& path) {
 #endif
 }
 
+// 辅助函数：将 UTF-8 编码的 std::string 安全转换为 fs::path
+// Windows: UTF-8 -> QString -> UTF-16 -> fs::path
+// Linux/macOS: 直接使用 UTF-8 std::string 构造
+static fs::path utf8StringToPath(const std::string& utf8Path) {
+#ifdef _WIN32
+    // Windows: 从 UTF-8 转换为 UTF-16，再构造 fs::path
+    return fs::path(QString::fromUtf8(utf8Path.c_str()).toStdWString());
+#else
+    // Linux/macOS: 直接使用 UTF-8
+    return fs::path(utf8Path);
+#endif
+}
+
 FileOrganizer::FileOrganizer()
     : m_layoutManager(nullptr)
 {}
@@ -61,20 +74,39 @@ void FileOrganizer::clearRules() {
     Logger::getInstance().info("FileOrganizer: Cleared all rules");
 }
 
-std::vector<std::string> FileOrganizer::scanDesktopFiles() const {
-    std::vector<std::string> files;
+std::vector<fs::path> FileOrganizer::scanDesktopFiles() const {
+    std::vector<fs::path> files;
     
-    if (m_desktopPath.empty() || !fs::exists(m_desktopPath)) {
+    // 调试日志：输出当前桌面路径
+    Logger::getInstance().debug("FileOrganizer: [DEBUG] Current m_desktopPath: " + m_desktopPath);
+    
+    if (m_desktopPath.empty()) {
+        Logger::getInstance().warning("FileOrganizer: Desktop path is empty");
+        return files;
+    }
+    
+    // 使用安全转换：从 UTF-8 std::string 构造 fs::path
+    fs::path desktopPath = utf8StringToPath(m_desktopPath);
+    if (!fs::exists(desktopPath)) {
         Logger::getInstance().warning("FileOrganizer: Desktop path does not exist: " + m_desktopPath);
         return files;
     }
     
     try {
         // 仅扫描一级目录，不递归
-        for (const auto& entry : fs::directory_iterator(m_desktopPath)) {
+        // 直接使用 fs::path，避免 std::string 中转的编码风险
+        for (const auto& entry : fs::directory_iterator(desktopPath)) {
             // 扫描普通文件和文件夹，不扫描子目录
             if (entry.is_regular_file() || entry.is_directory()) {
-                files.push_back(pathToUtf8String(entry.path()));
+                // 调试日志：输出每个文件的完整路径和文件名（UTF-8 转换后）
+                std::string fullPathUtf8 = pathToUtf8String(entry.path());
+                std::string fileNameUtf8 = filenameToUtf8String(entry.path());
+                
+                Logger::getInstance().debug("FileOrganizer: [DEBUG] Found file - Path: " + fullPathUtf8 + 
+                                         ", Filename: " + fileNameUtf8);
+                
+                // 直接添加 fs::path 到结果中，不做任何转换
+                files.push_back(entry.path());
             }
         }
         Logger::getInstance().info("FileOrganizer: Scanned desktop, found " + 
@@ -151,7 +183,10 @@ const ccdesk::core::OrganizeRule* FileOrganizer::findMatchingRule(
 
 bool FileOrganizer::targetFileExists(const std::string& targetDir, 
                                     const std::string& fileName) const {
-    fs::path targetPath = fs::path(targetDir) / fileName;
+    // 使用安全转换：从 UTF-8 std::string 构造 fs::path
+    fs::path targetDirPath = utf8StringToPath(targetDir);
+    fs::path fileNamePath = utf8StringToPath(fileName);
+    fs::path targetPath = targetDirPath / fileNamePath;
     return fs::exists(targetPath);
 }
 
@@ -176,14 +211,15 @@ std::vector<OrganizePreviewItem> FileOrganizer::generatePreview() const {
 
     std::vector<OrganizePreviewItem> preview;
 
+    // 直接获取 fs::path 列表，避免 std::string 中转
     auto files = scanDesktopFiles();
 
     for (const auto& filePath : files) {
-        fs::path path(filePath);
-        std::string fileName = filenameToUtf8String(path);
+        // 直接从 fs::path 提取文件名，避免编码往返
+        std::string fileName = filenameToUtf8String(filePath);
 
         OrganizePreviewItem item;
-        item.sourcePath = filePath;
+        item.sourcePath = pathToUtf8String(filePath);  // 只在存入时转换
         item.fileName = fileName;
 
         const OrganizeRule* matchedRule = findMatchingRule(fileName);
@@ -229,25 +265,23 @@ std::vector<OrganizePreviewItem> FileOrganizer::generateCategoryPreview() const 
         return preview;
     }
     
-    // 手动扫描桌面文件（不调用已删除的 scanAndClassify 方法）
+    // 直接获取 fs::path 列表
     auto files = scanDesktopFiles();
     
     for (const auto& filePath : files) {
-        // 分类文件
+        // 分类文件：直接传入 fs::path，避免编码转换
         FileCategory category = m_layoutManager->classifyFile(filePath);
         
         // 跳过 OTHER 分类（内部未匹配标记）
         if (category == CATEGORY_OTHER) {
-            Logger::getInstance().debug("FileOrganizer: 跳过未分类文件: " + filePath);
+            Logger::getInstance().debug("FileOrganizer: 跳过未分类文件: " + pathToUtf8String(filePath));
             continue;
         }
         
-        fs::path path(filePath);
-        std::string fileName = filenameToUtf8String(path);
-        
+        // 只在存入时转换为 UTF-8
         OrganizePreviewItem item;
-        item.sourcePath = filePath;
-        item.fileName = fileName;
+        item.sourcePath = pathToUtf8String(filePath);
+        item.fileName = filenameToUtf8String(filePath);
         item.categoryName = DesktopLayoutManager::getCategoryName(category);
         item.matchedRuleName = item.categoryName;  // 使用分类名称作为"规则名称"
         
@@ -356,7 +390,7 @@ OrganizePlan FileOrganizer::generateOrganizePlan() {
     
     plan.desktopPath = m_desktopPath;
     
-    // 扫描桌面文件
+    // 直接获取 fs::path 列表
     auto files = scanDesktopFiles();
     plan.totalFiles = static_cast<int>(files.size());
     
@@ -376,19 +410,16 @@ OrganizePlan FileOrganizer::generateOrganizePlan() {
                 break;
             }
             
-            fs::path path(filePath);
-            std::string fileName = filenameToUtf8String(path);
-            
-            // 分类文件
+            // 分类文件：直接传入 fs::path
             FileCategory category = m_layoutManager->classifyFile(filePath);
             
             // 统计分类数量
             plan.categoryCounts[category]++;
             
-            // 添加预览项
+            // 只在存入时转换为 UTF-8
             OrganizePreviewItem item;
-            item.sourcePath = filePath;
-            item.fileName = fileName;
+            item.sourcePath = pathToUtf8String(filePath);
+            item.fileName = filenameToUtf8String(filePath);
             item.categoryName = DesktopLayoutManager::getCategoryName(category);
             item.matchedRuleName = item.categoryName;
             item.status = OrganizePreviewItem::Movable;
@@ -407,14 +438,12 @@ OrganizePlan FileOrganizer::generateOrganizePlan() {
                 break;
             }
 
-            fs::path path(filePath);
-            std::string fileName = filenameToUtf8String(path);
-
+            // 只在存入时转换为 UTF-8
             OrganizePreviewItem item;
-            item.sourcePath = filePath;
-            item.fileName = fileName;
+            item.sourcePath = pathToUtf8String(filePath);
+            item.fileName = filenameToUtf8String(filePath);
 
-            const OrganizeRule* matchedRule = findMatchingRule(fileName);
+            const OrganizeRule* matchedRule = findMatchingRule(item.fileName);
 
             if (!matchedRule) {
                 item.status = OrganizePreviewItem::NoRule;
@@ -436,7 +465,7 @@ OrganizePlan FileOrganizer::generateOrganizePlan() {
                 else if (matchedRule->name == "压缩包") ruleCategory = CATEGORY_ARCHIVE;
 
                 // 检查冲突（仅信息展示，不影响规划）
-                if (targetFileExists(matchedRule->targetPath, fileName)) {
+                if (targetFileExists(matchedRule->targetPath, item.fileName)) {
                     item.status = OrganizePreviewItem::Conflict;
                     item.statusMessage = "分类建议冲突 - 目标位置已存在同名文件";
                     plan.categoryCounts[ruleCategory]++; // 冲突也归入对应分类

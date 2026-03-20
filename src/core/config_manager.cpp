@@ -4,17 +4,41 @@
 #include <sstream>
 #include <filesystem>
 #include <iostream>
+#include <QStandardPaths>
+#include <QString>
 
 namespace fs = std::filesystem;
 
 namespace ccdesk::core {
 
 ConfigManager::ConfigManager()
-    : m_configPath("config/ccdesk_config.json")
-    , m_startupEnabled(false)
+    : m_startupEnabled(false)
     , m_organizeMode(MODE_DESKTOP_ORGANIZE)  // 默认使用桌面收纳盒模式
 {
-    Logger::getInstance().info("ConfigManager: Constructed");
+    // 辅助函数：将 QString 安全转换为 UTF-8 std::string
+    // Windows: QString (UTF-16) -> toUtf8() -> std::string (UTF-8)
+    // Linux/macOS: QString (UTF-8) -> toUtf8() -> std::string (UTF-8)
+    auto qstringToUtf8String = [](const QString& qstr) -> std::string {
+        return qstr.toUtf8().toStdString();
+    };
+
+    // 使用 Qt 标准路径获取用户数据目录，确保配置文件位置可预测
+    QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    
+    // 安全转换：使用 toUtf8() 而不是 toStdString()
+    fs::path configDir = fs::path(appDataDir.toStdWString());  // Windows 下使用 UTF-16
+    if (!fs::exists(configDir)) {
+        fs::create_directories(configDir);
+    }
+    
+    // 安全转换：从 fs::path 转为 UTF-8 std::string
+#ifdef _WIN32
+    m_configPath = QString::fromStdWString((configDir / "ccdesk_config.json").wstring()).toUtf8().toStdString();
+#else
+    m_configPath = (configDir / "ccdesk_config.json").string();
+#endif
+
+    Logger::getInstance().info("ConfigManager: Constructed, config path: " + m_configPath);
     load();
 }
 

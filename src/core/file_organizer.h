@@ -7,11 +7,14 @@
 #include <atomic>
 #include <map>
 #include <sstream>
+#include <filesystem>
 #include "organize_result.h"
 #include "config_manager.h"
 #include "desktop_layout_manager.h"
 
 namespace ccdesk::core {
+
+namespace fs = std::filesystem;
 
 // 预览项（展示给用户看）
 struct OrganizePreviewItem {
@@ -85,8 +88,8 @@ public:
     // 清空所有规则（向后兼容）
     void clearRules();
     
-    // 扫描桌面文件（仅一级，不递归）
-    std::vector<std::string> scanDesktopFiles() const;
+    // 扫描桌面文件（仅一级，不递归）- 改为返回 fs::path 避免编码往返
+    std::vector<fs::path> scanDesktopFiles() const;
     
     // 生成预览（不实际移动文件）- 新分类预览
     std::vector<OrganizePreviewItem> generatePreview() const;
