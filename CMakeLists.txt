@@ -30,6 +30,16 @@ set(SOURCES
     src/core/tray_manager.cpp
     src/core/app_manager.h
     src/core/app_manager.cpp
+    src/core/desktop_icon_accessor.h
+    src/core/desktop_icon_accessor.cpp
+    src/core/desktop_icon_writer.h
+    src/core/desktop_icon_writer.cpp
+    src/core/desktop_arrange_rule_engine.h
+    src/core/desktop_arrange_rule_engine.cpp
+    src/core/desktop_layout_planner.h
+    src/core/desktop_layout_planner.cpp
+    src/core/desktop_auto_arrange_service.h
+    src/core/desktop_auto_arrange_service.cpp
     src/ui/main_window.h
     src/ui/main_window.cpp
     src/ui/settings_dialog.h
@@ -47,6 +57,8 @@ target_link_libraries(CCDesk
 if(WIN32)
     # Windows特定库（用于注册表操作）
     target_link_libraries(CCDesk advapi32)
+    # Shell COM + ListView 跨进程
+    target_link_libraries(CCDesk shell32 ole32 oleaut32 shlwapi user32 comctl32)
 endif()
 
 target_include_directories(CCDesk PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

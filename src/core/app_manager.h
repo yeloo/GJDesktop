@@ -11,6 +11,8 @@ class ConfigManager;
 class FileOrganizer;
 class TrayManager;
 class DesktopLayoutManager;
+class DesktopIconAccessor;
+class DesktopAutoArrangeService;
 } // namespace ccdesk::core
 
 namespace ccdesk::ui {
@@ -32,6 +34,8 @@ public:
     FileOrganizer* getFileOrganizer() const;
     DesktopLayoutManager* getDesktopLayoutManager() const;
     TrayManager* getTrayManager() const;
+    DesktopIconAccessor* getDesktopIconAccessor() const;
+    DesktopAutoArrangeService* getAutoArrangeService() const;
     ui::MainWindow* getMainWindow() const;
     
     // 运行应用
@@ -66,6 +70,12 @@ private:
     // 初始化TrayManager
     bool initializeTrayManager();
     
+    // 初始化DesktopIconAccessor
+    bool initializeDesktopIconAccessor();
+    
+    // 初始化DesktopAutoArrangeService
+    bool initializeAutoArrangeService();
+    
     // 从配置恢复分区
     void restorePartitions();
     
@@ -75,6 +85,8 @@ private:
     std::unique_ptr<DesktopLayoutManager> m_desktopLayoutManager;
     std::unique_ptr<FileOrganizer> m_fileOrganizer;
     std::unique_ptr<TrayManager> m_trayManager;
+    std::unique_ptr<DesktopIconAccessor> m_desktopIconAccessor;
+    std::unique_ptr<DesktopAutoArrangeService> m_autoArrangeService;
     std::unique_ptr<ui::MainWindow> m_mainWindow;
     
     std::string m_desktopPath;

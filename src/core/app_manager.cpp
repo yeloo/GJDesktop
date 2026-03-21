@@ -4,6 +4,8 @@
 #include "desktop_layout_manager.h"
 #include "file_organizer.h"
 #include "tray_manager.h"
+#include "desktop_icon_accessor.h"
+#include "desktop_auto_arrange_service.h"
 #include "../ui/main_window.h"
 
 #include <QApplication>
@@ -119,6 +121,16 @@ bool AppManager::initialize() {
     
     Logger::getInstance().info("AppManager: TrayManager initialized");
     
+    // 初始化 DesktopIconAccessor（可选功能，不预检查桌面可访问性）
+    if (!initializeDesktopIconAccessor()) {
+        Logger::getInstance().warning("AppManager: DesktopIconAccessor initialization failed (non-critical)");
+    }
+    
+    // 初始化 DesktopAutoArrangeService（自动整理服务）
+    if (!initializeAutoArrangeService()) {
+        Logger::getInstance().warning("AppManager: DesktopAutoArrangeService initialization failed (non-critical)");
+    }
+    
     // 恢复分区
     restorePartitions();
     
@@ -211,6 +223,16 @@ bool AppManager::initializeTrayManager() {
     return true;
 }
 
+bool AppManager::initializeDesktopIconAccessor() {
+    m_desktopIconAccessor = std::make_unique<DesktopIconAccessor>();
+    return m_desktopIconAccessor != nullptr;
+}
+
+bool AppManager::initializeAutoArrangeService() {
+    m_autoArrangeService = std::make_unique<DesktopAutoArrangeService>();
+    return m_autoArrangeService != nullptr;
+}
+
 void AppManager::restorePartitions() {
     if (!m_configManager) {
         Logger::getInstance().warning("AppManager: ConfigManager is null, cannot load partition config");
@@ -254,6 +276,14 @@ TrayManager* AppManager::getTrayManager() const {
     return m_trayManager.get();
 }
 
+DesktopIconAccessor* AppManager::getDesktopIconAccessor() const {
+    return m_desktopIconAccessor.get();
+}
+
+DesktopAutoArrangeService* AppManager::getAutoArrangeService() const {
+    return m_autoArrangeService.get();
+}
+
 ui::MainWindow* AppManager::getMainWindow() const {
     return m_mainWindow.get();
 }
@@ -275,6 +305,8 @@ void AppManager::cleanup() {
     
     m_mainWindow.reset();
     m_trayManager.reset();
+    m_autoArrangeService.reset();
+    m_desktopIconAccessor.reset();
     m_fileOrganizer.reset();
     m_desktopLayoutManager.reset();
     m_configManager.reset();
