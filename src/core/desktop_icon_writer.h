@@ -87,16 +87,24 @@ public:
     
     /**
      * 批量移动图标到目标位置
-     * 
+     *
      * @param targets 目标布局项列表
+     * @param movedCount 输出：成功移动数量
+     * @param failedCount 输出：失败数量
+     * @param errorMessage 输出：错误信息（首个失败的错误）
      * @return true 如果全部成功，false 如果有任何失败
-     * 
+     *
      * 策略：
      *   1. 优先使用 writeUsingCOMInterface()
      *   2. 失败时回退到 writeUsingListView()
      *   3. 逐个图标处理，单个失败不影响其他
      */
-    bool moveIcons(const std::vector<DesktopLayoutTarget>& targets);
+    bool moveIcons(
+        const std::vector<DesktopLayoutTarget>& targets,
+        size_t& movedCount,
+        size_t& failedCount,
+        std::string& errorMessage
+    );
     
     /**
      * 移动单个图标到目标位置

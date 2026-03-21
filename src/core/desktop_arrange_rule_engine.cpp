@@ -1,4 +1,5 @@
 #include "desktop_arrange_rule_engine.h"
+#include "desktop_icon_accessor.h"
 #include "logger.h"
 #include <algorithm>
 #include <cctype>

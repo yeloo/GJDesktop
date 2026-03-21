@@ -4,6 +4,7 @@
 #include <string>
 #include <fstream>
 #include <sstream>
+#include <cstdio>
 
 namespace ccdesk::core {
 
@@ -18,7 +19,28 @@ public:
     
     static Logger& getInstance();
     
-    // 日志记录方法
+    // 日志记录方法（格式化版本）
+    template<typename... Args>
+    void debug(const char* format, Args... args) {
+        log(LOG_DEBUG, formatMessage(format, args...));
+    }
+
+    template<typename... Args>
+    void info(const char* format, Args... args) {
+        log(LOG_INFO, formatMessage(format, args...));
+    }
+
+    template<typename... Args>
+    void warning(const char* format, Args... args) {
+        log(LOG_WARNING, formatMessage(format, args...));
+    }
+
+    template<typename... Args>
+    void error(const char* format, Args... args) {
+        log(LOG_ERROR, formatMessage(format, args...));
+    }
+
+    // 简单版本（保持向后兼容）
     void debug(const std::string& message);
     void info(const std::string& message);
     void warning(const std::string& message);
@@ -49,7 +71,19 @@ private:
     
     // 获取日志级别字符串
     std::string getLevelString(LogLevel level) const;
-    
+
+    // 格式化消息（可变参数模板）
+    template<typename... Args>
+    static std::string formatMessage(const char* format, Args... args) {
+        int size = std::snprintf(nullptr, 0, format, args...);
+        if (size <= 0) {
+            return format;
+        }
+        std::string result(size, '\0');
+        std::snprintf(&result[0], size + 1, format, args...);
+        return result;
+    }
+
     // 成员变量
     std::string m_logPath;
     LogLevel m_logLevel;

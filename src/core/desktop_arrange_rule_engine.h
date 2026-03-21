@@ -4,9 +4,14 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include "desktop_icon_accessor.h"
 
 namespace ccdesk::core {
+
+// 前向声明
+struct DesktopIconIdentity;
+
+/**
+ * 图标分类枚举（v1）
 
 /**
  * 图标分类枚举（v1）
