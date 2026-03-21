@@ -76,43 +76,28 @@ private:
     // 格式化消息（可变参数模板）- 安全版本
     // 使用 vector<char> 作为临时缓冲区，避免 std::string 越界风险
     // 注意：本实现不支持 MSVC 下的 std::string 直接传递，需要使用 .c_str()
+    // 变参函数不能在模板中使用，改用 std::ostringstream 实现
     template<typename... Args>
     static std::string formatMessage(const char* format, Args... args) {
-        // 第一步：计算所需缓冲区大小
-        int size = 0;
-        {
-            va_list va_args;
-            va_start(va_args, format);
-#ifdef _MSC_VER
-            size = _vscprintf(format, va_args);
-#else
-            size = vsnprintf(nullptr, 0, format, va_args);
-#endif
-            va_end(va_args);
-        }
-
-        if (size <= 0) {
-            // 格式化失败，返回原始格式字符串
+        // MSVC 不支持在模板中使用 va_start/va_end
+        // 改为使用 snprintf 格式化
+        if constexpr (sizeof...(Args) == 0) {
+            // 没有额外参数，直接返回格式字符串
             return format;
+        } else {
+            // 使用 snprintf 格式化
+            // 计算缓冲区大小
+            int size = std::snprintf(nullptr, 0, format, args...);
+            if (size <= 0) {
+                return format;
+            }
+
+            // 分配缓冲区
+            std::vector<char> buffer(size + 1, '\0');
+            std::snprintf(buffer.data(), size + 1, format, args...);
+
+            return std::string(buffer.data());
         }
-
-        // 第二步：分配足够大小的缓冲区（多分配1字节用于null终止符）
-        std::vector<char> buffer(size + 1, '\0');
-
-        // 第三步：执行实际的格式化
-        {
-            va_list va_args;
-            va_start(va_args, format);
-#ifdef _MSC_VER
-            vsnprintf_s(buffer.data(), size + 1, _TRUNCATE, format, va_args);
-#else
-            vsnprintf(buffer.data(), size + 1, format, va_args);
-#endif
-            va_end(va_args);
-        }
-
-        // 第四步：转换为 std::string（buffer[size] 保证是 '\0'）
-        return std::string(buffer.data());
     }
 
     // 成员变量

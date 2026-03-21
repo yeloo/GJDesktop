@@ -233,7 +233,7 @@ DesktopIconSnapshot DesktopIconAccessor::readUsingCOMInterface() {
 
         // 3. 判断是否为文件系统项（通过 SFGAO_FILESYSTEM 属性）
         SFGAOF sfgao = SFGAO_FILESYSTEM;
-        hr = spShellFolder->GetAttributesOf(1, &pidl, &sfgao);
+        hr = spShellFolder->GetAttributesOf(1, const_cast<LPCITEMIDLIST*>(&pidl), &sfgao);
         if (SUCCEEDED(hr)) {
             isFileSystemItem = ((sfgao & SFGAO_FILESYSTEM) != 0);
         }

@@ -168,29 +168,12 @@ bool DesktopIconWriter::writeUsingCOMInterface(
     Logger::getInstance().debug("DesktopIconWriter: 获取 IFolderView 成功");
 
     // 5. 尝试设置图标位置
-    // 方法 A: IFolderView::SetItemPosition
+    // 使用 IFolderView::SelectAndPositionItems
+    // 参数：UINT cidl, PCUITEMID_CHILD_ARRAY apidl, POINT *ppt, DWORD dwFlags
     POINT pt = targetPosition;
-    hr = pFolderView->SetItemPosition(pidl, &pt);
-    if (SUCCEEDED(hr)) {
-        Logger::getInstance().info(
-            "DesktopIconWriter: SetItemPosition 成功 - displayName: '%s', position: (%d, %d)",
-            identity.displayName.c_str(),
-            targetPosition.x,
-            targetPosition.y
-        );
-        return true;
-    }
-
-    // 方法 B: IFolderView::SelectAndPositionItems
-    // 如果 SetItemPosition 失败，尝试使用 SelectAndPositionItems
-    Logger::getInstance().warning("DesktopIconWriter: SetItemPosition 失败 (0x%08X)，尝试 SelectAndPositionItems", hr);
-
-    // 创建单个 PIDL 数组
     LPCITEMIDLIST pidlArray[1] = { pidl };
-    POINT ptArray[1] = { targetPosition };
-    DWORD dwArray[1] = { SVSI_SELECT | SVSI_ENSUREVISIBLE | SVSI_POSITIONITEM };
 
-    hr = pFolderView->SelectAndPositionItems(1, pidlArray, ptArray, dwArray);
+    hr = pFolderView->SelectAndPositionItems(1, pidlArray, &pt, SVSI_SELECT | SVSI_ENSUREVISIBLE | SVSI_POSITIONITEM);
     if (SUCCEEDED(hr)) {
         Logger::getInstance().info(
             "DesktopIconWriter: SelectAndPositionItems 成功 - displayName: '%s', position: (%d, %d)",
@@ -201,13 +184,12 @@ bool DesktopIconWriter::writeUsingCOMInterface(
         return true;
     }
 
-    // 如果两种方法都失败
-    errorMessage = "无法设置图标位置";
+    // 如果方法失败
+    errorMessage = "无法设置图标位置 (SelectAndPositionItems 失败)";
     Logger::getInstance().error(
-        "DesktopIconWriter: %s - displayName: '%s', SetItemPosition: 0x%08X, SelectAndPositionItems: 0x%08X",
+        "DesktopIconWriter: %s - displayName: '%s', HRESULT: 0x%08X",
         errorMessage.c_str(),
         identity.displayName.c_str(),
-        pFolderView->SetItemPosition(pidl, &pt),  // 重新调用获取错误码
         hr
     );
 
