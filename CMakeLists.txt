@@ -13,7 +13,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 
 set(SOURCES
     src/main.cpp
@@ -48,7 +48,7 @@ set(SOURCES
 
 add_executable(CCDesk ${SOURCES})
 
-target_link_libraries(CCDesk
+target_link_libraries(CCDesk PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
@@ -56,9 +56,16 @@ target_link_libraries(CCDesk
 
 if(WIN32)
     # Windows特定库（用于注册表操作）
-    target_link_libraries(CCDesk advapi32)
-    # Shell COM + ListView 跨进程
-    target_link_libraries(CCDesk shell32 ole32 oleaut32 shlwapi user32 comctl32)
+    target_link_libraries(CCDesk PRIVATE
+        advapi32
+        # Shell COM + ListView 跨进程
+        shell32
+        ole32
+        oleaut32
+        shlwapi
+        user32
+        comctl32
+    )
 endif()
 
 target_include_directories(CCDesk PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

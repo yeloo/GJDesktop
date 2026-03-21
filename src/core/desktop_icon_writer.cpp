@@ -5,11 +5,14 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <shlwapi.h>
+#include <shobjidl.h>
+#include <shlobj.h>
+#include <atlbase.h>
 
 namespace ccdesk::core {
 
 //=============================================================================
-// 主路线：SysListView32 跨进程消息写回（v1 使用）
+// 主路线：IFolderView COM 接口写回（实现中）
 //=============================================================================
 
 bool DesktopIconWriter::writeUsingCOMInterface(
@@ -17,113 +20,224 @@ bool DesktopIconWriter::writeUsingCOMInterface(
     POINT targetPosition,
     std::string& errorMessage
 ) {
-    // v1 中使用 SysListView32 路线，因为 IFolderView::SetItemPosition 不存在
-    return writeUsingListView(identity, targetPosition, errorMessage);
+    Logger::getInstance().info(
+        "DesktopIconWriter: COM write route - displayName: '%s', parsingName: '%s', target: (%d, %d)",
+        identity.displayName.c_str(),
+        identity.parsingName.c_str(),
+        targetPosition.x,
+        targetPosition.y
+    );
+
+    // 检查 parsingName 是否有效
+    if (identity.parsingName.empty()) {
+        errorMessage = "parsingName 为空，无法定位图标";
+        Logger::getInstance().error("DesktopIconWriter: %s", errorMessage.c_str());
+        return false;
+    }
+
+    HRESULT hr = S_OK;
+
+    // 1. 获取桌面 Shell Folder
+    CComPtr<IShellFolder> pDesktopFolder;
+    hr = SHGetDesktopFolder(&pDesktopFolder);
+    if (FAILED(hr) || !pDesktopFolder) {
+        errorMessage = "无法获取桌面 Shell Folder";
+        Logger::getInstance().error("DesktopIconWriter: %s, HRESULT: 0x%08X", errorMessage.c_str(), hr);
+        return false;
+    }
+
+    Logger::getInstance().debug("DesktopIconWriter: 获取桌面 Shell Folder 成功");
+
+    // 2. 将 parsingName 转换为 PIDL
+    // parsingName 已经是完整路径（例如 C:\Users\Administrator\Desktop\文档.docx）
+    ULONG chEaten = 0;
+    LPITEMIDLIST pidl = nullptr;
+    DWORD dwAttributes = 0;
+
+    // 将 UTF-8 parsingName 转换为 UTF-16
+    int wideLen = MultiByteToWideChar(CP_UTF8, 0, identity.parsingName.c_str(), -1, nullptr, 0);
+    if (wideLen <= 0) {
+        errorMessage = "parsingName 转换为 UTF-16 失败";
+        Logger::getInstance().error("DesktopIconWriter: %s", errorMessage.c_str());
+        return false;
+    }
+
+    std::wstring wideParsingName(wideLen - 1, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, identity.parsingName.c_str(), -1, &wideParsingName[0], wideLen);
+
+    hr = pDesktopFolder->ParseDisplayName(
+        nullptr,           // hwndOwner (nullptr 表示无父窗口)
+        nullptr,           // pbc (绑定上下文，nullptr 表示无)
+        &wideParsingName[0], // pszDisplayName (parsingName)
+        &chEaten,           // pchEaten (已解析的字符数，输出参数)
+        &pidl,             // ppidl (返回的 PIDL，输出参数)
+        &dwAttributes      // pdwAttributes (属性，输入输出参数)
+    );
+
+    if (FAILED(hr) || !pidl) {
+        errorMessage = "无法将 parsingName 转换为 PIDL, HRESULT: 0x%08X";
+        Logger::getInstance().error(errorMessage.c_str(), hr);
+        return false;
+    }
+
+    Logger::getInstance().debug("DesktopIconWriter: parsingName 转换为 PIDL 成功");
+
+    // 使用智能指针管理 PIDL 生命周期
+    struct PIDLDeleter {
+        void operator()(LPITEMIDLIST p) const { ILFree(p); }
+    };
+    std::unique_ptr<ITEMIDLIST, PIDLDeleter> pidlGuard(pidl);
+
+    // 3. 获取桌面窗口的 IFolderView
+    // 方法1: 通过 IShellWindows -> IShellBrowser -> IShellView -> IFolderView
+    CComPtr<IShellWindows> pShellWindows;
+    hr = CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&pShellWindows));
+    if (FAILED(hr) || !pShellWindows) {
+        errorMessage = "无法创建 IShellWindows, HRESULT: 0x%08X";
+        Logger::getInstance().error(errorMessage.c_str(), hr);
+        return false;
+    }
+
+    Logger::getInstance().debug("DesktopIconWriter: 创建 IShellWindows 成功");
+
+    // 4. 查找桌面窗口
+    long hwndCount = 0;
+    hr = pShellWindows->get_Count(&hwndCount);
+    if (FAILED(hr)) {
+        errorMessage = "无法获取窗口数量, HRESULT: 0x%08X";
+        Logger::getInstance().error(errorMessage.c_str(), hr);
+        return false;
+    }
+
+    Logger::getInstance().debug("DesktopIconWriter: ShellWindows 窗口数量: %ld", hwndCount);
+
+    CComPtr<IShellBrowser> pShellBrowser;
+    CComPtr<IFolderView> pFolderView;
+    VARIANT varIndex;
+    VariantInit(&varIndex);
+
+    // 遍历所有窗口查找桌面
+    for (long i = 0; i < hwndCount; i++) {
+        varIndex.vt = VT_I4;
+        varIndex.lVal = i;
+
+        CComPtr<IDispatch> spDispatch;
+        hr = pShellWindows->Item(varIndex, &spDispatch);
+        if (FAILED(hr) || !spDispatch) {
+            continue;
+        }
+
+        CComPtr<IWebBrowserApp> spWebBrowser;
+        hr = spDispatch->QueryInterface(IID_PPV_ARGS(&spWebBrowser));
+        if (FAILED(hr) || !spWebBrowser) {
+            continue;
+        }
+
+        CComPtr<IServiceProvider> spServiceProvider;
+        hr = spWebBrowser->QueryInterface(IID_PPV_ARGS(&spServiceProvider));
+        if (FAILED(hr) || !spServiceProvider) {
+            continue;
+        }
+
+        hr = spServiceProvider->QueryService(SID_STopLevelBrowser, IID_PPV_ARGS(&pShellBrowser));
+        if (FAILED(hr) || !pShellBrowser) {
+            continue;
+        }
+
+        CComPtr<IShellView> pShellView;
+        hr = pShellBrowser->QueryActiveShellView(&pShellView);
+        if (FAILED(hr) || !pShellView) {
+            continue;
+        }
+
+        hr = pShellView->QueryInterface(IID_PPV_ARGS(&pFolderView));
+        if (SUCCEEDED(hr) && pFolderView) {
+            Logger::getInstance().debug("DesktopIconWriter: 找到 IFolderView，窗口索引: %ld", i);
+            break;
+        }
+    }
+
+    VariantClear(&varIndex);
+
+    if (!pFolderView) {
+        errorMessage = "无法获取桌面 IFolderView";
+        Logger::getInstance().error("DesktopIconWriter: %s", errorMessage.c_str());
+        return false;
+    }
+
+    Logger::getInstance().debug("DesktopIconWriter: 获取 IFolderView 成功");
+
+    // 5. 尝试设置图标位置
+    // 方法 A: IFolderView::SetItemPosition
+    POINT pt = targetPosition;
+    hr = pFolderView->SetItemPosition(pidl, &pt);
+    if (SUCCEEDED(hr)) {
+        Logger::getInstance().info(
+            "DesktopIconWriter: SetItemPosition 成功 - displayName: '%s', position: (%d, %d)",
+            identity.displayName.c_str(),
+            targetPosition.x,
+            targetPosition.y
+        );
+        return true;
+    }
+
+    // 方法 B: IFolderView::SelectAndPositionItems
+    // 如果 SetItemPosition 失败，尝试使用 SelectAndPositionItems
+    Logger::getInstance().warning("DesktopIconWriter: SetItemPosition 失败 (0x%08X)，尝试 SelectAndPositionItems", hr);
+
+    // 创建单个 PIDL 数组
+    LPCITEMIDLIST pidlArray[1] = { pidl };
+    POINT ptArray[1] = { targetPosition };
+    DWORD dwArray[1] = { SVSI_SELECT | SVSI_ENSUREVISIBLE | SVSI_POSITIONITEM };
+
+    hr = pFolderView->SelectAndPositionItems(1, pidlArray, ptArray, dwArray);
+    if (SUCCEEDED(hr)) {
+        Logger::getInstance().info(
+            "DesktopIconWriter: SelectAndPositionItems 成功 - displayName: '%s', position: (%d, %d)",
+            identity.displayName.c_str(),
+            targetPosition.x,
+            targetPosition.y
+        );
+        return true;
+    }
+
+    // 如果两种方法都失败
+    errorMessage = "无法设置图标位置";
+    Logger::getInstance().error(
+        "DesktopIconWriter: %s - displayName: '%s', SetItemPosition: 0x%08X, SelectAndPositionItems: 0x%08X",
+        errorMessage.c_str(),
+        identity.displayName.c_str(),
+        pFolderView->SetItemPosition(pidl, &pt),  // 重新调用获取错误码
+        hr
+    );
+
+    return false;
 }
+
+//=============================================================================
+// 备用路线：SysListView32 跨进程消息写回（诊断性降级路线）
+//=============================================================================
 
 bool DesktopIconWriter::writeUsingListView(
     const DesktopIconIdentity& identity,
     POINT targetPosition,
     std::string& errorMessage
 ) {
-    // 1. 查找桌面窗口
-    HWND hwndDesktop = FindWindow(L"Progman", L"Program Manager");
-    if (hwndDesktop == nullptr) {
-        errorMessage = "找不到桌面窗口 (Progman)";
-        return false;
-    }
-    
-    // 2. 查找 ShellView 窗口
-    HWND hwndShellView = FindWindowEx(hwndDesktop, nullptr, L"SHELLDLL_DefView", nullptr);
-    if (hwndShellView == nullptr) {
-        errorMessage = "找不到 ShellView 窗口";
-        return false;
-    }
-    
-    // 3. 查找 SysListView32 窗口（桌面图标列表）
-    HWND hwndListView = FindWindowEx(hwndShellView, nullptr, L"SysListView32", L"FolderView");
-    if (hwndListView == nullptr) {
-        errorMessage = "找不到桌面图标列表窗口 (SysListView32)";
-        return false;
-    }
-    
-    Logger::getInstance().debug("DesktopIconWriter: 找到桌面 ListView 句柄 0x%p", hwndListView);
-    
-    // 4. 获取图标数量
-    int itemCount = SendMessage(hwndListView, LVM_GETITEMCOUNT, 0, 0);
-    if (itemCount <= 0) {
-        errorMessage = "桌面图标列表为空";
-        return false;
-    }
-    
-    Logger::getInstance().debug("DesktopIconWriter: 桌面图标总数: %d", itemCount);
-    
-    // 5. 在 ListView 中查找目标图标
-    int foundIndex = -1;
-    std::wstring targetDisplayName;
-    
-    // 将 displayName 从 UTF-8 转换为 UTF-16
-    int len = MultiByteToWideChar(CP_UTF8, 0, identity.displayName.c_str(), -1, nullptr, 0);
-    if (len > 0) {
-        targetDisplayName.resize(len - 1);
-        MultiByteToWideChar(CP_UTF8, 0, identity.displayName.c_str(), -1, &targetDisplayName[0], len);
-    }
-    
-    if (targetDisplayName.empty()) {
-        errorMessage = "displayName 为空";
-        return false;
-    }
-    
-    // 遍历所有图标查找匹配项
-    for (int i = 0; i < itemCount; i++) {
-        // 分配缓冲区
-        const int bufferSize = 260;  // MAX_PATH
-        WCHAR buffer[bufferSize] = {0};
-        
-        LVITEMW lvi = {0};
-        lvi.iItem = i;
-        lvi.iSubItem = 0;
-        lvi.mask = LVIF_TEXT;
-        lvi.pszText = buffer;
-        lvi.cchTextMax = bufferSize;
-        
-        // 获取图标名称
-        if (SendMessage(hwndListView, LVM_GETITEMW, 0, reinterpret_cast<LPARAM>(&lvi))) {
-            if (wcscmp(buffer, targetDisplayName.c_str()) == 0) {
-                foundIndex = i;
-                Logger::getInstance().debug("DesktopIconWriter: 找到图标 '%S' 在索引 %d", buffer, i);
-                break;
-            }
-        }
-    }
-    
-    if (foundIndex < 0) {
-        errorMessage = "找不到图标 '" + identity.displayName + "'";
-        return false;
-    }
-    
-    // 6. 设置图标位置
-    POINT point = targetPosition;
-    BOOL result = SendMessage(hwndListView, LVM_SETITEMPOSITION, foundIndex, MAKELPARAM(point.x, point.y));
-    
-    if (!result) {
-        errorMessage = "设置图标位置失败 (SendMessage 返回 FALSE)";
-        return false;
-    }
-    
-    // 7. 刷新视图
-    InvalidateRect(hwndListView, nullptr, TRUE);
-    UpdateWindow(hwndListView);
-    
-    Logger::getInstance().info(
-        "DesktopIconWriter: 成功移动图标 '%s' (索引 %d) 到 (%d, %d)",
+    Logger::getInstance().error(
+        "DesktopIconWriter: ListView write route not reliable - displayName: '%s', parsingName: '%s'",
         identity.displayName.c_str(),
-        foundIndex,
-        targetPosition.x,
-        targetPosition.y
+        identity.parsingName.c_str()
     );
-    
-    return true;
+
+    errorMessage = "真实桌面图标写回尚未可靠实现 - ListView 写回路线不可靠（仅按 displayName 查找，同名图标会出错）";
+    return false;
+
+    // 原实现已删除，原因：
+    // 1. LVM_GETITEMW 跨进程传递本进程指针给 Explorer，不成立
+    // 2. 仅按 displayName 查找，同名图标会出错
+    // 3. 只查找 Progman，没有 WorkerW 回退逻辑
+    // 4. LVM_SETITEMPOSITION 成功判定不可靠
+    // 5. 不允许假成功，必须诚实返回失败
 }
 
 //=============================================================================
@@ -139,36 +253,37 @@ bool DesktopIconWriter::moveIcons(
     movedCount = 0;
     failedCount = 0;
     errorMessage = "";
-    
-    Logger::getInstance().info("DesktopIconWriter: 开始批量移动 %zu 个图标", targets.size());
-    
+
+    Logger::getInstance().info("DesktopIconWriter: 开始批量移动 %zu 个图标（当前为降级实现）", targets.size());
+
     for (const auto& target : targets) {
         std::string singleError;
-        bool success = writeUsingCOMInterface(target.identity, target.targetPosition, singleError);
-        
+        bool success = moveSingleIcon(target.identity, target.targetPosition, singleError);
+
         if (success) {
             movedCount++;
         } else {
             failedCount++;
             Logger::getInstance().error(
-                "DesktopIconWriter: 移动图标 '%s' 失败: %s",
+                "DesktopIconWriter: 移动图标 '%s' (parsingName: '%s') 失败: %s",
                 target.identity.displayName.c_str(),
+                target.identity.parsingName.c_str(),
                 singleError.c_str()
             );
-            
+
             // 将第一个错误记录到 errorMessage
             if (errorMessage.empty()) {
                 errorMessage = "图标 '" + target.identity.displayName + "' 移动失败: " + singleError;
             }
         }
     }
-    
+
     Logger::getInstance().info(
-        "DesktopIconWriter: 批量移动完成 - 成功: %zu, 失败: %zu",
+        "DesktopIconWriter: 批量移动完成 - 成功: %zu, 失败: %zu（当前为降级实现，失败预期）",
         movedCount,
         failedCount
     );
-    
+
     return failedCount == 0;
 }
 
@@ -181,8 +296,33 @@ bool DesktopIconWriter::moveSingleIcon(
     POINT targetPosition,
     std::string& errorMessage
 ) {
-    // 最小可链接实现：委托给 writeUsingCOMInterface
-    return writeUsingCOMInterface(identity, targetPosition, errorMessage);
+    Logger::getInstance().info(
+        "DesktopIconWriter: 开始移动图标 - displayName: '%s', parsingName: '%s', target: (%d, %d)",
+        identity.displayName.c_str(),
+        identity.parsingName.c_str(),
+        targetPosition.x,
+        targetPosition.y
+    );
+
+    // 优先使用 COM 路线（IFolderView）
+    bool success = writeUsingCOMInterface(identity, targetPosition, errorMessage);
+
+    if (success) {
+        Logger::getInstance().info(
+            "DesktopIconWriter: 移动成功 - displayName: '%s', position: (%d, %d)",
+            identity.displayName.c_str(),
+            targetPosition.x,
+            targetPosition.y
+        );
+        return true;
+    } else {
+        Logger::getInstance().error(
+            "DesktopIconWriter: 移动失败 - displayName: '%s', error: %s",
+            identity.displayName.c_str(),
+            errorMessage.c_str()
+        );
+        return false;
+    }
 }
 
 } // namespace ccdesk::core

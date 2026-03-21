@@ -194,40 +194,77 @@ DesktopIconSnapshot DesktopIconAccessor::readUsingCOMInterface() {
     ULONG ulFetched = 0;
     
     while (SUCCEEDED(spEnumIDList->Next(1, &pidl, &ulFetched)) && ulFetched > 0) {
-        // 获取显示名称
+        // 获取显示名称（SHGDN_INFOLDER）
         STRRET strRet;
         ZeroMemory(&strRet, sizeof(strRet));
-        
+
+        std::string displayName;
+        std::string parsingName;
+        bool isFileSystemItem = false;
+
+        // 1. 读取显示名称
         hr = spShellFolder->GetDisplayNameOf(pidl, SHGDN_INFOLDER, &strRet);
         if (SUCCEEDED(hr)) {
             WCHAR wszName[MAX_PATH];
             hr = StrRetToBufW(&strRet, pidl, wszName, MAX_PATH);
             if (SUCCEEDED(hr)) {
-                // 转换为 UTF-8
                 int len = WideCharToMultiByte(CP_UTF8, 0, wszName, -1, nullptr, 0, nullptr, nullptr);
                 if (len > 0) {
-                    std::string displayName(len - 1, '\0');
+                    displayName.resize(len - 1);
                     WideCharToMultiByte(CP_UTF8, 0, wszName, -1, &displayName[0], len, nullptr, nullptr);
-                    
-                    // 获取坐标
-                    POINT pt;
-                    hr = spFolderView->GetItemPosition(pidl, &pt);
-                    if (SUCCEEDED(hr)) {
-                        // 添加到结果列表
-                        DesktopIcon icon;
-                        icon.displayName = displayName;
-                        icon.position = pt;
-                        snapshot.icons.push_back(icon);
-                    } else {
-                        Logger::getInstance().warning(
-                            "DesktopIconAccessor: GetItemPosition failed (HRESULT: 0x%08lX)",
-                            hr
-                        );
-                    }
                 }
             }
         }
-        
+
+        // 2. 读取 parsing name（SHGDN_FORPARSING）
+        ZeroMemory(&strRet, sizeof(strRet));
+        hr = spShellFolder->GetDisplayNameOf(pidl, SHGDN_FORPARSING, &strRet);
+        if (SUCCEEDED(hr)) {
+            WCHAR wszName[MAX_PATH];
+            hr = StrRetToBufW(&strRet, pidl, wszName, MAX_PATH);
+            if (SUCCEEDED(hr)) {
+                int len = WideCharToMultiByte(CP_UTF8, 0, wszName, -1, nullptr, 0, nullptr, nullptr);
+                if (len > 0) {
+                    parsingName.resize(len - 1);
+                    WideCharToMultiByte(CP_UTF8, 0, wszName, -1, &parsingName[0], len, nullptr, nullptr);
+                }
+            }
+        }
+
+        // 3. 判断是否为文件系统项（通过 SFGAO_FILESYSTEM 属性）
+        SFGAOF sfgao = SFGAO_FILESYSTEM;
+        hr = spShellFolder->GetAttributesOf(1, &pidl, &sfgao);
+        if (SUCCEEDED(hr)) {
+            isFileSystemItem = ((sfgao & SFGAO_FILESYSTEM) != 0);
+        }
+
+        // 4. 获取坐标
+        POINT pt;
+        hr = spFolderView->GetItemPosition(pidl, &pt);
+        if (SUCCEEDED(hr)) {
+            DesktopIcon icon;
+            icon.displayName = displayName;
+            icon.parsingName = parsingName;
+            icon.position = pt;
+            icon.isFileSystemItem = isFileSystemItem;
+            snapshot.icons.push_back(icon);
+
+            Logger::getInstance().debug(
+                "DesktopIconAccessor: Read icon - displayName: '%s', parsingName: '%s', position: (%d, %d), isFileSystemItem: %s",
+                displayName.c_str(),
+                parsingName.c_str(),
+                pt.x,
+                pt.y,
+                isFileSystemItem ? "true" : "false"
+            );
+        } else {
+            Logger::getInstance().warning(
+                "DesktopIconAccessor: GetItemPosition failed for '%s' (HRESULT: 0x%08lX)",
+                displayName.c_str(),
+                hr
+            );
+        }
+
         // 释放 PIDL
         if (pidl) {
             CoTaskMemFree(pidl);
@@ -242,9 +279,18 @@ DesktopIconSnapshot DesktopIconAccessor::readUsingCOMInterface() {
         return snapshot;
     }
     
+    // 统计 parsingName 获取情况
+    size_t parsingNameCount = 0;
+    for (const auto& icon : snapshot.icons) {
+        if (!icon.parsingName.empty()) {
+            parsingNameCount++;
+        }
+    }
+
     Logger::getInstance().info(
-        "DesktopIconAccessor: COM route succeeded - read %zu icons",
-        snapshot.icons.size()
+        "DesktopIconAccessor: COM route succeeded - read %zu icons, %zu with parsingName",
+        snapshot.icons.size(),
+        parsingNameCount
     );
     
     return snapshot;

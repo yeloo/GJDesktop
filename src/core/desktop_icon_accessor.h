@@ -19,13 +19,19 @@ enum class AccessMethod {
 };
 
 /**
- * v1 数据结构：桌面图标信息（仅包含已验证字段）
+ * v1 数据结构：桌面图标信息（已验证字段 + parsingName）
  */
 struct DesktopIcon {
     std::string displayName;   // 图标显示名称（UTF-8，已验证）
+    std::string parsingName;   // Shell parsing name（文件系统完整路径或虚拟项标识，用于稳定身份）
     POINT position;            // 屏幕坐标（像素，已验证）
+    bool isFileSystemItem;     // 是否为文件系统项（非虚拟文件夹）
     
-    DesktopIcon() : displayName(""), position{0, 0} {}
+    DesktopIcon() 
+        : displayName("")
+        , parsingName("")
+        , position{0, 0}
+        , isFileSystemItem(false) {}
 };
 
 /**
@@ -64,6 +70,7 @@ struct DesktopIconSnapshot {
  *   - 封装桌面图标位置读取逻辑
  *   - 自主管理 COM 初始化/清理
  *   - 提供 COM 和 ListView 双路线回退机制
+ *   - 读取 SHGDN_INFOLDER（显示名称）+ SHGDN_FORPARSING（parsingName）
  */
 class DesktopIconAccessor {
 public:
@@ -93,6 +100,12 @@ public:
      *   - 调用线程会自动初始化 COM（COINIT_APARTMENTTHREADED）
      *   - 不假设外部已初始化 COM
      *   - 不保证跨线程并发安全，建议单线程调用
+     * 
+     * v1 能力：
+     *   - displayName: 读取 SHGDN_INFOLDER，确保显示名称正确
+     *   - parsingName: 读取 SHGDN_FORPARSING，获取完整文件系统路径或虚拟项标识
+     *   - position: 读取 GetItemPosition，获取屏幕坐标
+     *   - isFileSystemItem: 判断是否为文件系统项
      */
     DesktopIconSnapshot readDesktopIcons();
     
@@ -115,6 +128,10 @@ private:
      * @return DesktopIconSnapshot 如果成功，method=COM_IFolderView
      * 
      * 已验证：用户本机 PoC 成功读取坐标
+     * 
+     * v1 增强能力：
+     *   - 读取 SHGDN_FORPARSING，获取真实 parsingName
+     *   - 判断是否为文件系统项
      */
     DesktopIconSnapshot readUsingCOMInterface();
     
@@ -125,7 +142,7 @@ private:
      * 
      * 注意：
      *   - 已验证：用户本机 PoC 成功读取坐标
-     *   - v1 限制：由于无法获取真实 displayName，本路线不会作为成功快照返回
+     *   - v1 限制：无法获取 displayName 和 parsingName，因此无法作为成功快照返回
      *   - 仅当 COM 路线失败时，本路线用于诊断和部分能力验证
      */
     DesktopIconSnapshot readUsingListView();

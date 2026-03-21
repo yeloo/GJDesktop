@@ -77,64 +77,67 @@ AppManager::~AppManager() {
 }
 
 bool AppManager::initialize() {
-    
+
+    Logger::getInstance().info("==================================================");
+    Logger::getInstance().info("AppManager: initialize() 开始");
+
     if (!initializeLogger()) {
+        Logger::getInstance().error("AppManager: initialize() 失败 - Logger 初始化失败");
         return false;
     }
-    
-    Logger::getInstance().info("AppManager: 正在初始化...");
-    
+
     Logger::getInstance().info("AppManager: Logger initialized");
-    
+
     if (!initializeConfigManager()) {
-        Logger::getInstance().error("AppManager: Failed to initialize ConfigManager");
+        Logger::getInstance().error("AppManager: initialize() 失败 - ConfigManager 初始化失败");
         return false;
     }
-    
+
     Logger::getInstance().info("AppManager: ConfigManager initialized");
-    
+
     if (!initializeDesktopLayoutManager()) {
-        Logger::getInstance().error("AppManager: Failed to initialize DesktopLayoutManager");
+        Logger::getInstance().error("AppManager: initialize() 失败 - DesktopLayoutManager 初始化失败");
         return false;
     }
-    
+
     Logger::getInstance().info("AppManager: DesktopLayoutManager initialized");
-    
+
     if (!initializeFileOrganizer()) {
-        Logger::getInstance().error("AppManager: Failed to initialize FileOrganizer");
+        Logger::getInstance().error("AppManager: initialize() 失败 - FileOrganizer 初始化失败");
         return false;
     }
-    
+
     Logger::getInstance().info("AppManager: FileOrganizer initialized");
-    
+
     if (!initializeUI()) {
-        Logger::getInstance().error("AppManager: Failed to initialize UI");
+        Logger::getInstance().error("AppManager: initialize() 失败 - UI 初始化失败");
         return false;
     }
-    
+
     Logger::getInstance().info("AppManager: UI initialized");
-    
+
     if (!initializeTrayManager()) {
-        Logger::getInstance().error("AppManager: Failed to initialize TrayManager");
+        Logger::getInstance().error("AppManager: initialize() 失败 - TrayManager 初始化失败");
         return false;
     }
-    
+
     Logger::getInstance().info("AppManager: TrayManager initialized");
-    
+
     // 初始化 DesktopIconAccessor（可选功能，不预检查桌面可访问性）
     if (!initializeDesktopIconAccessor()) {
         Logger::getInstance().warning("AppManager: DesktopIconAccessor initialization failed (non-critical)");
     }
-    
+
     // 初始化 DesktopAutoArrangeService（自动整理服务）
     if (!initializeAutoArrangeService()) {
         Logger::getInstance().warning("AppManager: DesktopAutoArrangeService initialization failed (non-critical)");
     }
-    
+
     // 恢复分区
     restorePartitions();
-    
-    Logger::getInstance().info("AppManager: Initialization complete");
+
+    Logger::getInstance().info("AppManager: initialize() 完成");
+    Logger::getInstance().info("==================================================");
     return true;
 }
 
@@ -257,8 +260,8 @@ void AppManager::restorePartitions() {
 
     // 检查是否需要在启动时自动整理桌面
     if (m_configManager && m_configManager->isAutoArrangeOnStartup()) {
-        Logger::getInstance().info("AppManager: Auto-arrange on startup enabled, executing...");
-        arrangeDesktop();
+        Logger::getInstance().info("AppManager: Auto-generate layout plan on startup enabled, executing...");
+        generateLayoutPlan();  // 【行为变更】启动时调用 generateLayoutPlan 而非 arrangeDesktop
     }
 }
 
@@ -267,32 +270,33 @@ void AppManager::restorePartitions() {
 //=============================================================================
 
 void AppManager::arrangeDesktop() {
+    Logger::getInstance().info("==================================================");
+    Logger::getInstance().info("AppManager: arrangeDesktop() 开始");
+
     if (!m_autoArrangeService) {
-        Logger::getInstance().error("AppManager: DesktopAutoArrangeService is null, cannot arrange desktop");
+        Logger::getInstance().error("AppManager: arrangeDesktop() 失败 - DesktopAutoArrangeService is null");
+        Logger::getInstance().info("==================================================");
         return;
     }
-
-    Logger::getInstance().info("AppManager: Starting desktop arrangement");
-    Logger::getInstance().info("==================================================");
 
     // 调用自动整理服务
     AutoArrangeResult result = m_autoArrangeService->arrangeDesktop();
 
     // 输出结果
     if (result.success()) {
-        Logger::getInstance().info("AppManager: Desktop arrangement completed successfully");
+        Logger::getInstance().info("AppManager: arrangeDesktop() 成功完成");
         Logger::getInstance().info("  Total icons: " + std::to_string(result.totalIcons));
         Logger::getInstance().info("  Categorized icons: " + std::to_string(result.categorizedIcons));
         Logger::getInstance().info("  Moved icons: " + std::to_string(result.movedIcons));
         Logger::getInstance().info("  Failed icons: " + std::to_string(result.failedIcons));
     } else {
-        Logger::getInstance().error("AppManager: Desktop arrangement failed: " + result.errorMessage);
+        Logger::getInstance().error("AppManager: arrangeDesktop() 失败: " + result.errorMessage);
         Logger::getInstance().error("  Total icons: " + std::to_string(result.totalIcons));
         Logger::getInstance().error("  Failed icons: " + std::to_string(result.failedIcons));
     }
 
+    Logger::getInstance().info("AppManager: arrangeDesktop() 结束");
     Logger::getInstance().info("==================================================");
-    Logger::getInstance().info("AppManager: Desktop arrangement process finished");
 }
 
 Logger* AppManager::getLogger() const {

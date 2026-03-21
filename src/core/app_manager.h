@@ -38,7 +38,10 @@ public:
     DesktopAutoArrangeService* getAutoArrangeService() const;
     ui::MainWindow* getMainWindow() const;
 
-    // 执行自动整理桌面
+    // 【接口层变更】执行桌面布局规划（规划/预演，不执行真实写回）
+    void generateLayoutPlan();
+
+    // 【向后兼容】执行自动整理桌面（内部调用 generateLayoutPlan）
     void arrangeDesktop();
 
     // 运行应用

@@ -61,6 +61,51 @@ struct AutoArrangeResult {
 };
 
 /**
+ * 桌面布局规划结果（规划/预演，不执行真实写回）
+ */
+struct LayoutPlanResult {
+    size_t totalIcons;          // 总图标数
+    size_t categorizedIcons;     // 分类成功数
+    size_t plannedIcons;         // 规划成功数
+    std::string errorMessage;    // 错误信息
+    
+    LayoutPlanResult() 
+        : totalIcons(0)
+        , categorizedIcons(0)
+        , plannedIcons(0)
+        , errorMessage("") {}
+    
+    /**
+     * 是否成功
+     * 
+     * @return true 如果 errorMessage 为空
+     */
+    bool success() const {
+        return errorMessage.empty();
+    }
+    
+    /**
+     * 获取结果摘要文本
+     * 
+     * @return 摘要文本
+     */
+    std::string getSummaryText() const {
+        std::stringstream ss;
+        ss << "桌面布局规划结果:\n";
+        ss << "----------------------------------------\n";
+        ss << "总图标数: " << totalIcons << "\n";
+        ss << "分类成功: " << categorizedIcons << "\n";
+        ss << "规划成功: " << plannedIcons << "\n";
+        if (!errorMessage.empty()) {
+            ss << "错误信息: " << errorMessage << "\n";
+        }
+        ss << "----------------------------------------\n";
+        ss << "规划" << (success() ? "成功" : "失败") << "\n";
+        return ss.str();
+    }
+};
+
+/**
  * 桌面自动整理服务 v1
  * 
  * 职责：
@@ -92,6 +137,25 @@ public:
      *   - 所有关键操作都记录日志
      */
     AutoArrangeResult arrangeDesktop();
+    
+    /**
+     * 生成桌面布局规划（规划/预演，不执行真实写回）
+     * 
+     * @return LayoutPlanResult 规划结果
+     * 
+     * 流程：
+     *   1. 读取桌面图标（DesktopIconAccessor）
+     *   2. 构建身份信息（从 DesktopIcon 构建 DesktopIconIdentity）
+     *   3. 分类图标（DesktopArrangeRuleEngine）
+     *   4. 计算目标坐标（DesktopLayoutPlanner）
+     *   5. 【不执行写回】返回规划结果
+     * 
+     * 注意：
+     *   - 当前版本仅支持规划生成，不执行真实桌面图标写回
+     *   - 调用此方法不会修改桌面图标位置
+     *   - 用于预览和分析桌面整理方案
+     */
+    LayoutPlanResult generateLayoutPlan();
     
     /**
      * 获取桌面图标访问器
