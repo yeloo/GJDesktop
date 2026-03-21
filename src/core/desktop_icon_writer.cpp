@@ -172,4 +172,17 @@ bool DesktopIconWriter::moveIcons(
     return failedCount == 0;
 }
 
+//=============================================================================
+// 移动单个图标
+//=============================================================================
+
+bool DesktopIconWriter::moveSingleIcon(
+    const DesktopIconIdentity& identity,
+    POINT targetPosition,
+    std::string& errorMessage
+) {
+    // 最小可链接实现：委托给 writeUsingCOMInterface
+    return writeUsingCOMInterface(identity, targetPosition, errorMessage);
+}
+
 } // namespace ccdesk::core
