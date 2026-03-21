@@ -17,7 +17,7 @@ TrayManager::TrayManager(QMainWindow* mainWindow, QObject* parent)
     , m_trayMenu(nullptr)
     , m_showAction(nullptr)
     , m_organizeAction(nullptr)
-    , m_arrangeAction(nullptr)
+    , m_layoutPlanAction(nullptr)  // 【接口层变更】改名：m_arrangeAction → m_layoutPlanAction
     , m_settingsAction(nullptr)
     , m_exitAction(nullptr)
 {
@@ -86,12 +86,12 @@ void TrayManager::createTrayMenu() {
     m_trayMenu->addSeparator();
 
     // 生成整理规划
-    m_organizeAction = m_trayMenu->addAction("生成整理规划");
+    m_organizeAction = m_trayMenu->addAction("生成文件整理规划");
     connect(m_organizeAction, &QAction::triggered, this, &TrayManager::onGenerateOrganizePlan);
 
-    // 立即整理桌面（新增）
-    m_arrangeAction = m_trayMenu->addAction("立即整理桌面");
-    connect(m_arrangeAction, &QAction::triggered, this, &TrayManager::onArrangeDesktop);
+    // 【行为变更 + 文案变更】生成桌面布局规划
+    m_layoutPlanAction = m_trayMenu->addAction("生成桌面布局规划");
+    connect(m_layoutPlanAction, &QAction::triggered, this, &TrayManager::onGenerateLayoutPlan);
 
     m_trayMenu->addSeparator();
 
@@ -142,11 +142,12 @@ void TrayManager::onGenerateOrganizePlan() {
     }
 }
 
-void TrayManager::onArrangeDesktop() {
-    Logger::getInstance().info("TrayManager: 点击了'立即整理桌面'菜单项");
+// 【行为变更】onGenerateLayoutPlan：生成桌面布局规划（规划/预演，不执行真实写回）
+void TrayManager::onGenerateLayoutPlan() {
+    Logger::getInstance().info("TrayManager: 点击了'生成桌面布局规划'菜单项");
 
-    // 直接调用 AppManager 的 arrangeDesktop 方法
-    AppManager::getInstance().arrangeDesktop();
+    // 调用 AppManager 的 generateLayoutPlan 方法（规划/预演）
+    AppManager::getInstance().generateLayoutPlan();
 }
 
 void TrayManager::onShowSettings() {

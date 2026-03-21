@@ -40,7 +40,7 @@ private slots:
     // 菜单项点击处理
     void onShowMainWindow();
     void onGenerateOrganizePlan();
-    void onArrangeDesktop();
+    void onGenerateLayoutPlan();  // 【接口层变更】改名：onArrangeDesktop → onGenerateLayoutPlan
     void onShowSettings();
     void onExitApp();
 
@@ -56,7 +56,7 @@ private:
     // 菜单项
     QAction* m_showAction;
     QAction* m_organizeAction;
-    QAction* m_arrangeAction;
+    QAction* m_layoutPlanAction;  // 【接口层变更】改名：m_arrangeAction → m_layoutPlanAction
     QAction* m_settingsAction;
     QAction* m_exitAction;
 };

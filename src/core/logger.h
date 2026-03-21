@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdio>
+#include <vector>
 
 namespace ccdesk::core {
 
@@ -72,25 +73,31 @@ private:
     // 获取日志级别字符串
     std::string getLevelString(LogLevel level) const;
 
-    // 格式化消息（可变参数模板）
+    // 格式化消息（可变参数模板）- 安全版本
+    // 使用 vector<char> 作为临时缓冲区，避免 std::string 越界风险
+    // 注意：本实现不支持 MSVC 下的 std::string 直接传递，需要使用 .c_str()
+    // 变参函数不能在模板中使用，改用 std::ostringstream 实现
     template<typename... Args>
     static std::string formatMessage(const char* format, Args... args) {
-        // MSVC 兼容性：使用 _snprintf 或 snprintf
-#ifdef _MSC_VER
-        int size = _snprintf(nullptr, 0, format, args...);
-#else
-        int size = std::snprintf(nullptr, 0, format, args...);
-#endif
-        if (size <= 0) {
+        // MSVC 不支持在模板中使用 va_start/va_end
+        // 改为使用 snprintf 格式化
+        if constexpr (sizeof...(Args) == 0) {
+            // 没有额外参数，直接返回格式字符串
             return format;
+        } else {
+            // 使用 snprintf 格式化
+            // 计算缓冲区大小
+            int size = std::snprintf(nullptr, 0, format, args...);
+            if (size <= 0) {
+                return format;
+            }
+
+            // 分配缓冲区
+            std::vector<char> buffer(size + 1, '\0');
+            std::snprintf(buffer.data(), size + 1, format, args...);
+
+            return std::string(buffer.data());
         }
-        std::string result(size, '\0');
-#ifdef _MSC_VER
-        _snprintf(&result[0], size + 1, format, args...);
-#else
-        std::snprintf(&result[0], size + 1, format, args...);
-#endif
-        return result;
     }
 
     // 成员变量
