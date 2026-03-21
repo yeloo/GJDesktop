@@ -75,12 +75,21 @@ private:
     // 格式化消息（可变参数模板）
     template<typename... Args>
     static std::string formatMessage(const char* format, Args... args) {
+        // MSVC 兼容性：使用 _snprintf 或 snprintf
+#ifdef _MSC_VER
+        int size = _snprintf(nullptr, 0, format, args...);
+#else
         int size = std::snprintf(nullptr, 0, format, args...);
+#endif
         if (size <= 0) {
             return format;
         }
         std::string result(size, '\0');
+#ifdef _MSC_VER
+        _snprintf(&result[0], size + 1, format, args...);
+#else
         std::snprintf(&result[0], size + 1, format, args...);
+#endif
         return result;
     }
 
