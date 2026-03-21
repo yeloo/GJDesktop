@@ -37,7 +37,10 @@ public:
     DesktopIconAccessor* getDesktopIconAccessor() const;
     DesktopAutoArrangeService* getAutoArrangeService() const;
     ui::MainWindow* getMainWindow() const;
-    
+
+    // 执行自动整理桌面
+    void arrangeDesktop();
+
     // 运行应用
     int run();
     

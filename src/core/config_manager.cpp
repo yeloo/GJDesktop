@@ -14,6 +14,8 @@ namespace ccdesk::core {
 ConfigManager::ConfigManager()
     : m_startupEnabled(false)
     , m_organizeMode(MODE_DESKTOP_ORGANIZE)  // 默认使用桌面收纳盒模式
+    , m_autoArrangeEnabled(false)              // 默认禁用自动整理
+    , m_autoArrangeOnStartup(false)            // 默认禁用启动时整理
 {
     // 辅助函数：将 QString 安全转换为 UTF-8 std::string
     // Windows: QString (UTF-16) -> toUtf8() -> std::string (UTF-8)
@@ -109,6 +111,8 @@ bool ConfigManager::save() {
         file << "  \"version\": \"2.0\",\n";
         file << "  \"startup_enabled\": " << (m_startupEnabled ? "true" : "false") << ",\n";
         file << "  \"organize_mode\": \"" << organizeModeToString(m_organizeMode) << "\",\n";
+        file << "  \"auto_arrange_enabled\": " << (m_autoArrangeEnabled ? "true" : "false") << ",\n";
+        file << "  \"auto_arrange_on_startup\": " << (m_autoArrangeOnStartup ? "true" : "false") << ",\n";
         
         file << "  \"partitions\": [\n";
         for (size_t i = 0; i < m_partitions.size(); ++i) {
@@ -208,6 +212,26 @@ bool ConfigManager::parseConfig(const std::string& content) {
         if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
             std::string modeStr = content.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
             m_organizeMode = organizeModeFromString(modeStr);
+        }
+    }
+
+    // 检查auto_arrange_enabled
+    size_t autoArrangePos = content.find("\"auto_arrange_enabled\"");
+    if (autoArrangePos != std::string::npos) {
+        size_t colonPos = content.find(":", autoArrangePos);
+        if (colonPos != std::string::npos) {
+            size_t truePos = content.find("true", colonPos);
+            m_autoArrangeEnabled = (truePos != std::string::npos && truePos < colonPos + 20);
+        }
+    }
+
+    // 检查auto_arrange_on_startup
+    size_t autoArrangeStartupPos = content.find("\"auto_arrange_on_startup\"");
+    if (autoArrangeStartupPos != std::string::npos) {
+        size_t colonPos = content.find(":", autoArrangeStartupPos);
+        if (colonPos != std::string::npos) {
+            size_t truePos = content.find("true", colonPos);
+            m_autoArrangeOnStartup = (truePos != std::string::npos && truePos < colonPos + 25);
         }
     }
     
@@ -585,6 +609,30 @@ ConfigManager::OrganizeMode ConfigManager::getOrganizeMode() const {
 void ConfigManager::setOrganizeMode(OrganizeMode mode) {
     m_organizeMode = mode;
     Logger::getInstance().info("ConfigManager: Organize mode set to: " + organizeModeToString(mode));
+}
+
+//=============================================================================
+// 自动整理设置
+//=============================================================================
+
+bool ConfigManager::isAutoArrangeEnabled() const {
+    return m_autoArrangeEnabled;
+}
+
+void ConfigManager::setAutoArrangeEnabled(bool enabled) {
+    m_autoArrangeEnabled = enabled;
+    Logger::getInstance().info("ConfigManager: Auto-arrange enabled set to: " +
+                              std::string(enabled ? "true" : "false"));
+}
+
+bool ConfigManager::isAutoArrangeOnStartup() const {
+    return m_autoArrangeOnStartup;
+}
+
+void ConfigManager::setAutoArrangeOnStartup(bool enabled) {
+    m_autoArrangeOnStartup = enabled;
+    Logger::getInstance().info("ConfigManager: Auto-arrange on startup set to: " +
+                              std::string(enabled ? "true" : "false"));
 }
 
 } // namespace ccdesk::core

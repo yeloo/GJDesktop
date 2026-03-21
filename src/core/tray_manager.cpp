@@ -1,4 +1,5 @@
 #include "tray_manager.h"
+#include "app_manager.h"
 #include "logger.h"
 #include <QMainWindow>
 #include <QMenu>
@@ -16,6 +17,7 @@ TrayManager::TrayManager(QMainWindow* mainWindow, QObject* parent)
     , m_trayMenu(nullptr)
     , m_showAction(nullptr)
     , m_organizeAction(nullptr)
+    , m_arrangeAction(nullptr)
     , m_settingsAction(nullptr)
     , m_exitAction(nullptr)
 {
@@ -76,27 +78,33 @@ void TrayManager::hide() {
 
 void TrayManager::createTrayMenu() {
     m_trayMenu = std::make_unique<QMenu>();
-    
+
     // 显示主窗口
     m_showAction = m_trayMenu->addAction("显示窗口");
     connect(m_showAction, &QAction::triggered, this, &TrayManager::onShowMainWindow);
-    
+
     m_trayMenu->addSeparator();
-    
+
     // 生成整理规划
     m_organizeAction = m_trayMenu->addAction("生成整理规划");
     connect(m_organizeAction, &QAction::triggered, this, &TrayManager::onGenerateOrganizePlan);
-    
+
+    // 立即整理桌面（新增）
+    m_arrangeAction = m_trayMenu->addAction("立即整理桌面");
+    connect(m_arrangeAction, &QAction::triggered, this, &TrayManager::onArrangeDesktop);
+
+    m_trayMenu->addSeparator();
+
     // 设置
     m_settingsAction = m_trayMenu->addAction("设置");
     connect(m_settingsAction, &QAction::triggered, this, &TrayManager::onShowSettings);
-    
+
     m_trayMenu->addSeparator();
-    
+
     // 退出程序
     m_exitAction = m_trayMenu->addAction("退出");
     connect(m_exitAction, &QAction::triggered, this, &TrayManager::onExitApp);
-    
+
     Logger::getInstance().info("TrayManager: 托盘菜单创建成功");
 }
 
@@ -127,11 +135,18 @@ void TrayManager::onShowMainWindow() {
 
 void TrayManager::onGenerateOrganizePlan() {
     Logger::getInstance().info("TrayManager: 点击了'生成整理规划'菜单项");
-    
+
     if (m_mainWindow) {
         // 发射信号给主窗口生成整理规划
         QMetaObject::invokeMethod(m_mainWindow, "triggerOrganizeFromTray", Qt::QueuedConnection);
     }
+}
+
+void TrayManager::onArrangeDesktop() {
+    Logger::getInstance().info("TrayManager: 点击了'立即整理桌面'菜单项");
+
+    // 直接调用 AppManager 的 arrangeDesktop 方法
+    AppManager::getInstance().arrangeDesktop();
 }
 
 void TrayManager::onShowSettings() {

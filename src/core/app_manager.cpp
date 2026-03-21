@@ -238,22 +238,61 @@ void AppManager::restorePartitions() {
         Logger::getInstance().warning("AppManager: ConfigManager is null, cannot load partition config");
         return;
     }
-    
+
     const auto& partitions = m_configManager->getPartitions();
-    
+
     if (partitions.empty()) {
         Logger::getInstance().info("AppManager: No partition config found");
         return;
     }
-    
+
     Logger::getInstance().info("AppManager: Loaded " + std::to_string(partitions.size()) + " partition configs (compatibility only)");
-    
+
     // 当前版本仅加载分区配置作为兼容残留，不代表已实现分区系统
     // 这些配置仅用于分类统计，不会创建虚拟分区窗口
     for (const auto& partition : partitions) {
-        Logger::getInstance().debug("AppManager: Loaded partition config: " + partition.name + 
+        Logger::getInstance().debug("AppManager: Loaded partition config: " + partition.name +
                                   " (category: " + std::to_string(partition.category) + ")");
     }
+
+    // 检查是否需要在启动时自动整理桌面
+    if (m_configManager && m_configManager->isAutoArrangeOnStartup()) {
+        Logger::getInstance().info("AppManager: Auto-arrange on startup enabled, executing...");
+        arrangeDesktop();
+    }
+}
+
+//=============================================================================
+// 自动整理桌面
+//=============================================================================
+
+void AppManager::arrangeDesktop() {
+    if (!m_autoArrangeService) {
+        Logger::getInstance().error("AppManager: DesktopAutoArrangeService is null, cannot arrange desktop");
+        return;
+    }
+
+    Logger::getInstance().info("AppManager: Starting desktop arrangement");
+    Logger::getInstance().info("==================================================");
+
+    // 调用自动整理服务
+    AutoArrangeResult result = m_autoArrangeService->arrangeDesktop();
+
+    // 输出结果
+    if (result.success()) {
+        Logger::getInstance().info("AppManager: Desktop arrangement completed successfully");
+        Logger::getInstance().info("  Total icons: " + std::to_string(result.totalIcons));
+        Logger::getInstance().info("  Categorized icons: " + std::to_string(result.categorizedIcons));
+        Logger::getInstance().info("  Moved icons: " + std::to_string(result.movedIcons));
+        Logger::getInstance().info("  Failed icons: " + std::to_string(result.failedIcons));
+    } else {
+        Logger::getInstance().error("AppManager: Desktop arrangement failed: " + result.errorMessage);
+        Logger::getInstance().error("  Total icons: " + std::to_string(result.totalIcons));
+        Logger::getInstance().error("  Failed icons: " + std::to_string(result.failedIcons));
+    }
+
+    Logger::getInstance().info("==================================================");
+    Logger::getInstance().info("AppManager: Desktop arrangement process finished");
 }
 
 Logger* AppManager::getLogger() const {

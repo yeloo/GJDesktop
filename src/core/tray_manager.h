@@ -36,10 +36,11 @@ public:
 private slots:
     // 托盘图标激活处理
     void onTrayIconActivated(QSystemTrayIcon::ActivationReason reason);
-    
+
     // 菜单项点击处理
     void onShowMainWindow();
     void onGenerateOrganizePlan();
+    void onArrangeDesktop();
     void onShowSettings();
     void onExitApp();
 
@@ -51,10 +52,11 @@ private:
     QMainWindow* m_mainWindow;
     std::unique_ptr<QSystemTrayIcon> m_trayIcon;
     std::unique_ptr<QMenu> m_trayMenu;
-    
+
     // 菜单项
     QAction* m_showAction;
     QAction* m_organizeAction;
+    QAction* m_arrangeAction;
     QAction* m_settingsAction;
     QAction* m_exitAction;
 };

@@ -90,12 +90,23 @@ public:
     // 新增：创建默认桌面收纳盒配置
     void createDefaultDesktopOrganizeConfig();
 
+    // 自动整理设置
+    bool isAutoArrangeEnabled() const;
+    void setAutoArrangeEnabled(bool enabled);
+
+    bool isAutoArrangeOnStartup() const;
+    void setAutoArrangeOnStartup(bool enabled);
+
 private:
     std::string m_configPath;
     std::vector<PartitionConfig> m_partitions;
     std::vector<OrganizeRule> m_rules;
     bool m_startupEnabled;
     OrganizeMode m_organizeMode;
+
+    // 自动整理配置
+    bool m_autoArrangeEnabled;
+    bool m_autoArrangeOnStartup;
     
     // 内部方法
     void createDefaultConfig();
