@@ -16,7 +16,7 @@ Logger& Logger::getInstance() {
 }
 
 Logger::Logger()
-    : m_logLevel(INFO)
+    : m_logLevel(LOG_INFO)
 {
     // 创建logs目录
     std::string logsDir = "logs";
@@ -80,11 +80,11 @@ std::string Logger::getTimestamp() const {
 
 std::string Logger::getLevelString(LogLevel level) const {
     switch (level) {
-        case DEBUG:   return "DEBUG";
-        case INFO:    return "INFO";
-        case WARNING: return "WARN";
-        case ERROR:   return "ERROR";
-        default:      return "UNKNOWN";
+        case LOG_DEBUG:   return "DEBUG";
+        case LOG_INFO:    return "INFO";
+        case LOG_WARNING: return "WARN";
+        case LOG_ERROR:   return "ERROR";
+        default:          return "UNKNOWN";
     }
 }
 
@@ -118,19 +118,19 @@ void Logger::log(LogLevel level, const std::string& message) {
 }
 
 void Logger::debug(const std::string& message) {
-    log(DEBUG, message);
+    log(LOG_DEBUG, message);
 }
 
 void Logger::info(const std::string& message) {
-    log(INFO, message);
+    log(LOG_INFO, message);
 }
 
 void Logger::warning(const std::string& message) {
-    log(WARNING, message);
+    log(LOG_WARNING, message);
 }
 
 void Logger::error(const std::string& message) {
-    log(ERROR, message);
+    log(LOG_ERROR, message);
 }
 
 } // namespace ccdesk::core

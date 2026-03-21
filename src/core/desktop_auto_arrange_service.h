@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <sstream>
 #include "desktop_icon_accessor.h"
 #include "desktop_icon_writer.h"
 #include "desktop_arrange_rule_engine.h"
