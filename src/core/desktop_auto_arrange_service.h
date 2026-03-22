@@ -10,6 +10,11 @@
 #include "desktop_arrange_rule_engine.h"
 #include "desktop_layout_planner.h"
 
+// 前向声明 SnapshotManager
+namespace ccdesk::core {
+class SnapshotManager;
+}
+
 namespace ccdesk::core {
 
 /**

@@ -392,10 +392,6 @@ DesktopLayoutSnapshot DesktopAutoArrangeService::createPositionSnapshot(
     return snapshot;
 }
 
-DesktopLayoutPlanner* DesktopAutoArrangeService::getLayoutPlanner() const {
-    return m_layoutPlanner.get();
-}
-
 SnapshotManager* DesktopAutoArrangeService::getSnapshotManager() const {
     return m_snapshotManager.get();
 }

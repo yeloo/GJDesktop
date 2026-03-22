@@ -180,7 +180,10 @@ private:
     
     // 获取分类中文名称（从 IconCategory 枚举值）
     QString getCategoryDisplayName(const QString& category) const;
-    
+
+    // 更新快照状态
+    void updateSnapshotStatus();
+
     // 隐藏到托盘
     void hideToTray();
 
