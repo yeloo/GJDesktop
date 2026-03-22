@@ -186,7 +186,7 @@ QWidget* MainWindow::createFileOrganizeSection() {
     m_fileResultList->setMaximumHeight(150);
     m_fileResultList->setStyleSheet("QTextEdit { border: 1px solid #bdc3c7; border-radius: 3px; "
                                     "background-color: #ffffff; font-family: 'Courier New', monospace; font-size: 10px; }");
-    m_fileResultList->setPlaceholderText("点击"生成文件分类规划"按钮开始分析...");
+    m_fileResultList->setPlaceholderText(u8"点击\"生成文件分类规划\"按钮开始分析...");
     mainLayout->addWidget(m_fileResultList);
     
     return group;
@@ -243,7 +243,7 @@ QWidget* MainWindow::createLayoutSection() {
     m_layoutResultList->setMaximumHeight(150);
     m_layoutResultList->setStyleSheet("QTextEdit { border: 1px solid #bdc3c7; border-radius: 3px; "
                                      "background-color: #ffffff; font-family: 'Courier New', monospace; font-size: 10px; }");
-    m_layoutResultList->setPlaceholderText("点击"生成桌面布局规划"按钮开始分析...");
+    m_layoutResultList->setPlaceholderText(u8"点击\"生成桌面布局规划\"按钮开始分析...");
     mainLayout->addWidget(m_layoutResultList);
     
     return group;
