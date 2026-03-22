@@ -146,6 +146,7 @@ struct AutoArrangeResult {
     size_t categorizedIcons;               // 分类成功数
     size_t plannedIcons;                   // 规划成功数
     size_t movedIcons;                     // 移动成功数
+    size_t unchangedIcons;                 // 未变化数（目标位置与当前位置一致）
     size_t failedIcons;                    // 移动失败数
     std::string errorMessage;              // 全局错误信息
     std::vector<ArrangeFailureDetail> failures;  // 失败详情列表
@@ -158,6 +159,7 @@ struct AutoArrangeResult {
         , categorizedIcons(0)
         , plannedIcons(0)
         , movedIcons(0)
+        , unchangedIcons(0)
         , failedIcons(0)
         , errorMessage("")
         , preExecutionSnapshot(nullptr) {}
@@ -193,6 +195,7 @@ struct AutoArrangeResult {
         ss << "分类成功: " << categorizedIcons << "\n";
         ss << "规划成功: " << plannedIcons << "\n";
         ss << "移动成功: " << movedIcons << "\n";
+        ss << "未变化: " << unchangedIcons << "\n";
         ss << "移动失败: " << failedIcons << "\n";
 
         if (failedIcons > 0) {

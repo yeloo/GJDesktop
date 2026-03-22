@@ -56,7 +56,9 @@ MainWindow::MainWindow(QWidget* parent)
     , m_iconTotalLabel(nullptr)
     , m_iconCategorizedLabel(nullptr)
     , m_iconPlannedLabel(nullptr)
-    , m_iconStatsLabel(nullptr)
+    , m_iconCategoryStatsLabel(nullptr)
+    , m_arrangeMovedLabel(nullptr)
+    , m_arrangeFailedLabel(nullptr)
     , m_fileResultList(nullptr)
     , m_layoutResultList(nullptr)
     , m_logSummary(nullptr)
@@ -269,18 +271,21 @@ QWidget* MainWindow::createLayoutSection() {
     m_iconPlannedLabel->setStyleSheet("color: #2980b9; font-weight: bold;");
     statsLayout->addWidget(m_iconPlannedLabel);
 
-    // 执行统计标签（新增）
-    QLabel* arrangeMovedLabel = new QLabel("移动成功: 0", group);
-    arrangeMovedLabel->setStyleSheet("color: #27ae60; font-weight: bold;");
-    m_iconStatsLabel = arrangeMovedLabel;  // 复用现有变量
-    statsLayout->addWidget(arrangeMovedLabel);
-
     statsLayout->addStretch();
 
-    QLabel* executeStatsLabel = new QLabel("移动失败: 0", group);
-    executeStatsLabel->setStyleSheet("color: #e74c3c; font-weight: bold;");
-    executeStatsLabel->setObjectName("executeFailedLabel");  // 用于后续访问
-    statsLayout->addWidget(executeStatsLabel);
+    // 分类统计标签
+    m_iconCategoryStatsLabel = new QLabel("分类统计: 无", group);
+    m_iconCategoryStatsLabel->setStyleSheet("color: #7f8c8d; font-size: 11px;");
+    statsLayout->addWidget(m_iconCategoryStatsLabel);
+
+    // 执行统计标签
+    m_arrangeMovedLabel = new QLabel("移动成功: 0", group);
+    m_arrangeMovedLabel->setStyleSheet("color: #27ae60; font-weight: bold;");
+    statsLayout->addWidget(m_arrangeMovedLabel);
+
+    m_arrangeFailedLabel = new QLabel("移动失败: 0", group);
+    m_arrangeFailedLabel->setStyleSheet("color: #e74c3c; font-weight: bold;");
+    statsLayout->addWidget(m_arrangeFailedLabel);
 
     mainLayout->addLayout(statsLayout);
 
@@ -538,6 +543,7 @@ void MainWindow::onExecuteDesktopArrange() {
     m_state.iconCategorizedCount = static_cast<int>(result.categorizedIcons);
     m_state.iconPlannedCount = static_cast<int>(result.plannedIcons);
     m_state.arrangeMovedCount = static_cast<int>(result.movedIcons);
+    m_state.arrangeUnchangedCount = static_cast<int>(result.unchangedIcons);
     m_state.arrangeFailedCount = static_cast<int>(result.failedIcons);
 
     // 转换失败详情
@@ -561,19 +567,37 @@ void MainWindow::onExecuteDesktopArrange() {
     m_iconPlannedLabel->setText(QString("已规划: %1").arg(result.plannedIcons));
 
     // 更新执行统计
-    m_iconStatsLabel->setText(QString("移动成功: %1").arg(result.movedIcons));
-
-    // 查找失败统计标签
-    QLabel* executeFailedLabel = findChild<QLabel*>("executeFailedLabel");
-    if (executeFailedLabel) {
-        executeFailedLabel->setText(QString("移动失败: %1").arg(result.failedIcons));
-    }
+    m_arrangeMovedLabel->setText(QString("移动成功: %1").arg(result.movedIcons));
+    m_arrangeFailedLabel->setText(QString("移动失败: %1").arg(result.failedIcons));
 
     // 根据结果显示不同的提示
-    if (result.success()) {
+    if (result.failedIcons == 0 && result.movedIcons == 0 && result.unchangedIcons > 0) {
+        // 分支1: 无位置变化
+        m_state.lastOperation = u8"执行桌面自动整理";
+        m_state.lastOperationResult = "无位置变化";
+        m_state.lastOperationDetail = QString::fromStdString(
+            u8"未发生实际移动（未变化 " + std::to_string(result.unchangedIcons) + u8" 个）"
+        );
+
+        QMessageBox::information(
+            this,
+            u8"执行完成",
+            u8"本次执行完成，但未发生实际移动。\n\n" +
+            QString::number(result.unchangedIcons) + u8" 个图标的目标位置与当前位置一致。\n\n" +
+            "可能原因：\n"
+            "• 图标已经在目标位置\n"
+            "• 整理规划与当前布局相同"
+        );
+
+        Logger::getInstance().info("MainWindow: 桌面自动整理无位置变化 - 未变化 %zu 个", result.unchangedIcons);
+    } else if (result.failedIcons == 0 && result.movedIcons > 0) {
+        // 分支2: 部分或全部成功（有实际移动）
         m_state.lastOperation = u8"执行桌面自动整理";
         m_state.lastOperationResult = "成功";
-        m_state.lastOperationDetail = QString::fromStdString(u8"全部 %1 个图标移动成功").arg(result.movedIcons);
+        m_state.lastOperationDetail = QString::fromStdString(
+            u8"移动成功 " + std::to_string(result.movedIcons) +
+            (result.unchangedIcons > 0 ? u8" 个，未变化 " + std::to_string(result.unchangedIcons) + u8" 个" : u8" 个")
+        );
 
         QMessageBox::information(
             this,
@@ -581,12 +605,14 @@ void MainWindow::onExecuteDesktopArrange() {
             QString::fromStdString(result.getSummaryText())
         );
 
-        Logger::getInstance().info("MainWindow: 桌面自动整理全部成功，移动 %zu 个图标", result.movedIcons);
-    } else if (result.partialSuccess()) {
+        Logger::getInstance().info("MainWindow: 桌面自动整理成功 - 移动 %zu, 未变化 %zu", result.movedIcons, result.unchangedIcons);
+    } else if (result.failedIcons > 0 && result.movedIcons > 0) {
+        // 分支3: 部分成功（有移动也有失败）
         m_state.lastOperation = u8"执行桌面自动整理";
         m_state.lastOperationResult = u8"部分成功";
         m_state.lastOperationDetail = QString::fromStdString(
             u8"移动成功: " + std::to_string(result.movedIcons) +
+            u8", 未变化: " + std::to_string(result.unchangedIcons) +
             u8", 移动失败: " + std::to_string(result.failedIcons)
         );
 
@@ -597,14 +623,19 @@ void MainWindow::onExecuteDesktopArrange() {
         );
 
         Logger::getInstance().warning(
-            "MainWindow: 桌面自动整理部分成功，成功: %zu, 失败: %zu",
+            "MainWindow: 桌面自动整理部分成功 - 成功: %zu, 未变化: %zu, 失败: %zu",
             result.movedIcons,
+            result.unchangedIcons,
             result.failedIcons
         );
     } else {
+        // 分支4: 失败或无实际移动
         m_state.lastOperation = u8"执行桌面自动整理";
         m_state.lastOperationResult = "失败";
-        m_state.lastOperationDetail = QString::fromStdString(result.errorMessage);
+        m_state.lastOperationDetail = QString::fromStdString(
+            u8"0个实际移动，失败 " + std::to_string(result.failedIcons) + u8" 个" +
+            (result.unchangedIcons > 0 ? u8"，未变化 " + std::to_string(result.unchangedIcons) + u8" 个" : u8"")
+        );
 
         QMessageBox::critical(
             this,
@@ -613,8 +644,9 @@ void MainWindow::onExecuteDesktopArrange() {
         );
 
         Logger::getInstance().error(
-            "MainWindow: 桌面自动整理失败，错误: %s",
-            result.errorMessage.c_str()
+            "MainWindow: 桌面自动整理失败 - 未变化: %zu, 失败: %zu",
+            result.unchangedIcons,
+            result.failedIcons
         );
     }
 
@@ -810,7 +842,7 @@ void MainWindow::updateStatusBar(const MainWindowState& state) {
     m_iconTotalLabel->setText(QString("总图标数: %1").arg(state.iconTotalCount));
     m_iconCategorizedLabel->setText(QString("已分类: %1").arg(state.iconCategorizedCount));
     m_iconPlannedLabel->setText(QString("已规划: %1").arg(state.iconPlannedCount));
-    
+
     // 更新图标分类统计
     QString iconStatsText;
     if (!state.iconCategoryCounts.empty()) {
@@ -822,7 +854,7 @@ void MainWindow::updateStatusBar(const MainWindowState& state) {
     } else {
         iconStatsText = "分类统计: 无";
     }
-    m_iconStatsLabel->setText(iconStatsText);
+    m_iconCategoryStatsLabel->setText(iconStatsText);
 }
 
 void MainWindow::showFileOrganizeResults(const MainWindowState& state) {

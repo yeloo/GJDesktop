@@ -3,6 +3,7 @@
 #include "logger.h"
 #include <sstream>
 #include <cctype>
+#include <unordered_map>
 
 namespace ccdesk::core {
 
@@ -264,45 +265,75 @@ AutoArrangeResult DesktopAutoArrangeService::arrangeDesktop() {
     // 6. 真实写回位置
     Logger::getInstance().info("DesktopAutoArrangeService: 步骤 6/6: 真实写回位置（将修改桌面图标位置）");
 
+    // 建立当前位置索引（key=parsingName）
+    std::unordered_map<std::string, POINT> currentPosMap;
+    for (const auto& icon : arrangeableIcons) {
+        if (!icon.identity.parsingName.empty()) {
+            currentPosMap[icon.identity.parsingName] = icon.currentPosition;
+        }
+    }
+
     // 逐个移动图标，记录详细失败信息
     for (const auto& target : targets) {
-        std::string errorMessage;
-        bool success = m_iconWriter->moveSingleIcon(target.identity, target.targetPosition, errorMessage);
+        // 检查当前位置与目标位置是否一致
+        const std::string& parsingName = target.identity.parsingName;
+        bool needMove = true;
 
-        if (success) {
-            result.movedIcons++;
-            Logger::getInstance().debug(
-                "DesktopAutoArrangeService: 移动图标 '%s' 成功到 (%d, %d)",
-                target.identity.displayName.c_str(),
-                target.targetPosition.x,
-                target.targetPosition.y
-            );
-        } else {
-            result.failedIcons++;
+        if (!parsingName.empty() && currentPosMap.find(parsingName) != currentPosMap.end()) {
+            POINT current = currentPosMap[parsingName];
+            if (current.x == target.targetPosition.x && current.y == target.targetPosition.y) {
+                // 位置完全一致，无需移动
+                result.unchangedIcons++;
+                Logger::getInstance().debug(
+                    "DesktopAutoArrangeService: 图标 '%s' 未变化 - 当前位置 (%d, %d) 与目标位置一致",
+                    target.identity.displayName.c_str(),
+                    current.x,
+                    current.y
+                );
+                needMove = false;
+            }
+        }
 
-            // 记录失败详情
-            char posStr[32];
-            snprintf(posStr, sizeof(posStr), "(%d, %d)", target.targetPosition.x, target.targetPosition.y);
+        if (needMove) {
+            std::string errorMessage;
+            bool success = m_iconWriter->moveSingleIcon(target.identity, target.targetPosition, errorMessage);
 
-            result.failures.push_back(ArrangeFailureDetail(
-                target.identity.displayName,
-                target.identity.parsingName,
-                posStr,
-                errorMessage
-            ));
+            if (success) {
+                result.movedIcons++;
+                Logger::getInstance().debug(
+                    "DesktopAutoArrangeService: 移动图标 '%s' 成功到 (%d, %d)",
+                    target.identity.displayName.c_str(),
+                    target.targetPosition.x,
+                    target.targetPosition.y
+                );
+            } else {
+                result.failedIcons++;
 
-            Logger::getInstance().error(
-                "DesktopAutoArrangeService: 移动图标 '%s' (parsingName: '%s') 失败: %s",
-                target.identity.displayName.c_str(),
-                target.identity.parsingName.c_str(),
-                errorMessage.c_str()
-            );
+                // 记录失败详情
+                char posStr[32];
+                snprintf(posStr, sizeof(posStr), "(%d, %d)", target.targetPosition.x, target.targetPosition.y);
+
+                result.failures.push_back(ArrangeFailureDetail(
+                    target.identity.displayName,
+                    target.identity.parsingName,
+                    posStr,
+                    errorMessage
+                ));
+
+                Logger::getInstance().error(
+                    "DesktopAutoArrangeService: 移动图标 '%s' (parsingName: '%s') 失败: %s",
+                    target.identity.displayName.c_str(),
+                    target.identity.parsingName.c_str(),
+                    errorMessage.c_str()
+                );
+            }
         }
     }
 
     Logger::getInstance().info(
-        "DesktopAutoArrangeService: 移动完成 - 成功: %zu, 失败: %zu",
+        "DesktopAutoArrangeService: 移动完成 - 成功: %zu, 未变化: %zu, 失败: %zu",
         result.movedIcons,
+        result.unchangedIcons,
         result.failedIcons
     );
 
@@ -314,9 +345,20 @@ AutoArrangeResult DesktopAutoArrangeService::arrangeDesktop() {
             result.failedIcons,
             result.totalIcons
         );
-    } else {
+    } else if (result.movedIcons > 0) {
         Logger::getInstance().info("DesktopAutoArrangeService: 自动整理全部成功");
+    } else if (result.unchangedIcons > 0) {
+        Logger::getInstance().info("DesktopAutoArrangeService: 本次无视觉变化，原因：目标位置与当前位置一致");
     }
+
+    Logger::getInstance().info(
+        "DesktopAutoArrangeService: 总计 %zu/%zu/%zu/%zu/%zu (total/planned/moved/unchanged/failed)",
+        result.totalIcons,
+        result.plannedIcons,
+        result.movedIcons,
+        result.unchangedIcons,
+        result.failedIcons
+    );
 
     return result;
 }

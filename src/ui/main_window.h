@@ -83,6 +83,7 @@ struct MainWindowState {
 
     // 桌面自动整理执行结果状态
     int arrangeMovedCount = 0;
+    int arrangeUnchangedCount = 0;
     int arrangeFailedCount = 0;
     std::vector<ArrangeExecuteResultItem> arrangeExecutionDetails;
 
@@ -199,12 +200,14 @@ private:
     QLabel* m_fileTotalLabel;
     QLabel* m_fileCategorizedLabel;
     QLabel* m_fileStatsLabel;  // 分类统计显示
-    
+
     QLabel* m_iconTotalLabel;
     QLabel* m_iconCategorizedLabel;
     QLabel* m_iconPlannedLabel;
-    QLabel* m_iconStatsLabel;  // 分类统计显示
-    
+    QLabel* m_iconCategoryStatsLabel;  // 图标分类统计显示
+    QLabel* m_arrangeMovedLabel;       // 移动成功统计
+    QLabel* m_arrangeFailedLabel;      // 移动失败统计
+
     QTextEdit* m_fileResultList;
     QTextEdit* m_layoutResultList;
     QTextEdit* m_logSummary;
