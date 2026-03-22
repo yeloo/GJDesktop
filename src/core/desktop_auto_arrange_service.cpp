@@ -267,30 +267,83 @@ AutoArrangeResult DesktopAutoArrangeService::arrangeDesktop() {
 
     // 建立当前位置索引（key=parsingName）
     std::unordered_map<std::string, POINT> currentPosMap;
+    std::unordered_map<std::string, POINT> displayNameMap;  // 诊断用 fallback map
     for (const auto& icon : arrangeableIcons) {
         if (!icon.identity.parsingName.empty()) {
             currentPosMap[icon.identity.parsingName] = icon.currentPosition;
         }
+        if (!icon.identity.displayName.empty()) {
+            displayNameMap[icon.identity.displayName] = icon.currentPosition;
+        }
     }
+
+    Logger::getInstance().info(
+        "DesktopAutoArrangeService: currentPosMap keys: %zu, displayNameMap keys: %zu",
+        currentPosMap.size(),
+        displayNameMap.size()
+    );
 
     // 逐个移动图标，记录详细失败信息
     for (const auto& target : targets) {
-        // 检查当前位置与目标位置是否一致
         const std::string& parsingName = target.identity.parsingName;
+        const std::string& displayName = target.identity.displayName;
         bool needMove = true;
 
+        // 诊断：打印目标信息
+        Logger::getInstance().debug(
+            "DesktopAutoArrangeService: 检查图标 '%s' (parsingName: '%s'), 目标位置 (%d, %d)",
+            displayName.c_str(),
+            parsingName.c_str(),
+            target.targetPosition.x,
+            target.targetPosition.y
+        );
+
+        // 尝试用 parsingName 查找当前位置
         if (!parsingName.empty() && currentPosMap.find(parsingName) != currentPosMap.end()) {
             POINT current = currentPosMap[parsingName];
+            Logger::getInstance().debug(
+                "DesktopAutoArrangeService:   parsingName HIT - 当前位置 (%d, %d)",
+                current.x,
+                current.y
+            );
+
             if (current.x == target.targetPosition.x && current.y == target.targetPosition.y) {
                 // 位置完全一致，无需移动
                 result.unchangedIcons++;
-                Logger::getInstance().debug(
+                Logger::getInstance().info(
                     "DesktopAutoArrangeService: 图标 '%s' 未变化 - 当前位置 (%d, %d) 与目标位置一致",
-                    target.identity.displayName.c_str(),
+                    displayName.c_str(),
                     current.x,
                     current.y
                 );
                 needMove = false;
+            }
+        } else {
+            // parsingName 未命中，尝试用 displayName fallback（仅诊断）
+            if (!displayName.empty() && displayNameMap.find(displayName) != displayNameMap.end()) {
+                POINT current = displayNameMap[displayName];
+                Logger::getInstance().debug(
+                    "DesktopAutoArrangeService:   parsingName MISS, displayName HIT - 当前位置 (%d, %d)",
+                    current.x,
+                    current.y
+                );
+
+                if (current.x == target.targetPosition.x && current.y == target.targetPosition.y) {
+                    result.unchangedIcons++;
+                    Logger::getInstance().info(
+                        "DesktopAutoArrangeService: 图标 '%s' 未变化（通过displayName匹配）- 当前位置 (%d, %d) 与目标位置一致",
+                        displayName.c_str(),
+                        current.x,
+                        current.y
+                    );
+                    needMove = false;
+                }
+            } else {
+                Logger::getInstance().debug(
+                    "DesktopAutoArrangeService:   parsingName MISS, displayName MISS - parsingName: '%s', displayName: '%s'",
+                    parsingName.c_str(),
+                    displayName.c_str()
+                );
             }
         }
 
