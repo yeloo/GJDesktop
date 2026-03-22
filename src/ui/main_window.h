@@ -60,6 +60,14 @@ struct ArrangeExecuteResultItem {
     QString failureReason;  // 失败原因
 };
 
+// 数据模型：恢复桌面原布局结果展示项
+struct RestoreResultItem {
+    QString displayName;
+    QString originalPosition;
+    QString status;  // "成功" / "失败"
+    QString failureReason;  // 失败原因
+};
+
 // 数据模型：主窗口状态摘要
 struct MainWindowState {
     // 文件整理模块状态
@@ -77,6 +85,16 @@ struct MainWindowState {
     int arrangeMovedCount = 0;
     int arrangeFailedCount = 0;
     std::vector<ArrangeExecuteResultItem> arrangeExecutionDetails;
+
+    // 恢复桌面原布局结果状态
+    int restoreTotalCount = 0;
+    int restoreSuccessCount = 0;
+    int restoreFailedCount = 0;
+    std::vector<RestoreResultItem> restoreExecutionDetails;
+
+    // 快照状态
+    bool hasSnapshotAvailable = false;
+    QString lastSnapshotTime;
 
     // 最近操作结果
     QString lastOperation;
@@ -102,6 +120,7 @@ public slots:
     void triggerOrganizeFromTray();
     void triggerLayoutFromTray();
     void triggerExecuteArrangeFromTray();
+    void triggerRestoreFromTray();
     void showSettingsDialog();
 
 private slots:
@@ -115,6 +134,9 @@ private slots:
 
     // 桌面自动整理执行操作
     void onExecuteDesktopArrange();
+
+    // 恢复桌面原布局操作
+    void onRestoreOriginalLayout();
 
     // 设置
     void onShowSettings();
@@ -189,13 +211,16 @@ private:
     QPushButton* m_generateLayoutPlanBtn;
     QPushButton* m_refreshLayoutResultsBtn;
     QPushButton* m_executeArrangeBtn;  // 执行桌面自动整理按钮
+    QPushButton* m_restoreLayoutBtn;  // 恢复桌面原布局按钮
     QPushButton* m_settingsBtn;
-    
+
+    QLabel* m_snapshotStatusLabel;  // 快照状态标签
+
     QTimer* m_logUpdateTimer;  // 定时更新日志摘要
-    
+
     // 最近的文件整理规划结果
     std::unique_ptr<ccdesk::core::OrganizePlan> m_lastFilePlan;
-    
+
     // 最近的桌面布局规划结果
     std::unique_ptr<ccdesk::core::LayoutPlanResult> m_lastLayoutPlan;
 };

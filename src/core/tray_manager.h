@@ -42,6 +42,7 @@ private slots:
     void onGenerateOrganizePlan();
     void onGenerateLayoutPlan();  // 【接口层变更】改名：onArrangeDesktop → onGenerateLayoutPlan
     void onExecuteArrange();  // 执行桌面自动整理
+    void onRestoreOriginalLayout();  // 恢复桌面原布局
     void onShowSettings();
     void onExitApp();
 
@@ -59,6 +60,7 @@ private:
     QAction* m_organizeAction;
     QAction* m_layoutPlanAction;  // 【接口层变更】改名：m_arrangeAction → m_layoutPlanAction
     QAction* m_executeArrangeAction;  // 执行桌面自动整理菜单项
+    QAction* m_restoreLayoutAction;  // 恢复桌面原布局菜单项
     QAction* m_settingsAction;
     QAction* m_exitAction;
 };

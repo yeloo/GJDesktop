@@ -19,6 +19,7 @@ TrayManager::TrayManager(QMainWindow* mainWindow, QObject* parent)
     , m_organizeAction(nullptr)
     , m_layoutPlanAction(nullptr)  // 【接口层变更】改名：m_arrangeAction → m_layoutPlanAction
     , m_executeArrangeAction(nullptr)  // 执行桌面自动整理菜单项
+    , m_restoreLayoutAction(nullptr)  // 恢复桌面原布局菜单项
     , m_settingsAction(nullptr)
     , m_exitAction(nullptr)
 {
@@ -102,6 +103,10 @@ void TrayManager::createTrayMenu() {
     m_executeArrangeAction->setFont(boldFont);
     connect(m_executeArrangeAction, &QAction::triggered, this, &TrayManager::onExecuteArrange);
 
+    // 恢复桌面原布局（新增）
+    m_restoreLayoutAction = m_trayMenu->addAction(u8"恢复桌面原布局");
+    connect(m_restoreLayoutAction, &QAction::triggered, this, &TrayManager::onRestoreOriginalLayout);
+
     m_trayMenu->addSeparator();
 
     // 设置
@@ -168,6 +173,16 @@ void TrayManager::onExecuteArrange() {
     if (m_mainWindow) {
         // 发射信号给主窗口执行整理
         QMetaObject::invokeMethod(m_mainWindow, "triggerExecuteArrangeFromTray", Qt::QueuedConnection);
+    }
+}
+
+// 【新增】onRestoreOriginalLayout：恢复桌面原布局
+void TrayManager::onRestoreOriginalLayout() {
+    Logger::getInstance().info("TrayManager: 点击了'恢复桌面原布局'菜单项");
+
+    if (m_mainWindow) {
+        // 发射信号给主窗口恢复布局
+        QMetaObject::invokeMethod(m_mainWindow, "triggerRestoreFromTray", Qt::QueuedConnection);
     }
 }
 

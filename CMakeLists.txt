@@ -40,6 +40,8 @@ set(SOURCES
     src/core/desktop_layout_planner.cpp
     src/core/desktop_auto_arrange_service.h
     src/core/desktop_auto_arrange_service.cpp
+    src/core/snapshot_manager.h
+    src/core/snapshot_manager.cpp
     src/ui/main_window.h
     src/ui/main_window.cpp
     src/ui/settings_dialog.h

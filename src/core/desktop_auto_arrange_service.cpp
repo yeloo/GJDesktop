@@ -10,12 +10,13 @@ namespace ccdesk::core {
 
 DesktopAutoArrangeService::DesktopAutoArrangeService() {
     Logger::getInstance().info("DesktopAutoArrangeService: 初始化自动整理服务");
-    
+
     // 创建各模块
     m_iconAccessor = std::make_unique<DesktopIconAccessor>();
     m_iconWriter = std::make_unique<DesktopIconWriter>();
     m_ruleEngine = std::make_unique<DesktopArrangeRuleEngine>();
     m_layoutPlanner = std::make_unique<DesktopLayoutPlanner>();
+    m_snapshotManager = std::make_unique<SnapshotManager>();
 }
 
 //=============================================================================
@@ -236,7 +237,7 @@ AutoArrangeResult DesktopAutoArrangeService::arrangeDesktop() {
     Logger::getInstance().debug("DesktopAutoArrangeService: %s", layoutPlan.c_str());
 
     // 5. 创建执行前位置快照
-    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 5/6: 创建执行前位置快照");
+    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 5/6: 创建并保存执行前位置快照");
     result.preExecutionSnapshot = std::make_unique<DesktopLayoutSnapshot>(
         createPositionSnapshot(arrangeableIcons)
     );
@@ -246,6 +247,14 @@ AutoArrangeResult DesktopAutoArrangeService::arrangeDesktop() {
             "DesktopAutoArrangeService: 位置快照创建完成 - %zu 个图标",
             result.preExecutionSnapshot->totalCount
         );
+
+        // 持久化保存快照
+        if (!m_snapshotManager->saveSnapshot(*result.preExecutionSnapshot)) {
+            Logger::getInstance().warning("DesktopAutoArrangeService: 保存快照到磁盘失败");
+            // 注意：快照保存失败不应阻止执行，仅记录警告
+        } else {
+            Logger::getInstance().info("DesktopAutoArrangeService: 快照已持久化保存");
+        }
     }
 
     // 6. 真实写回位置
@@ -381,6 +390,112 @@ DesktopLayoutSnapshot DesktopAutoArrangeService::createPositionSnapshot(
     );
 
     return snapshot;
+}
+
+DesktopLayoutPlanner* DesktopAutoArrangeService::getLayoutPlanner() const {
+    return m_layoutPlanner.get();
+}
+
+SnapshotManager* DesktopAutoArrangeService::getSnapshotManager() const {
+    return m_snapshotManager.get();
+}
+
+bool DesktopAutoArrangeService::hasSnapshot() const {
+    return m_snapshotManager->hasSnapshot();
+}
+
+RestoreLayoutResult DesktopAutoArrangeService::restoreOriginalLayout() {
+    Logger::getInstance().info("DesktopAutoArrangeService: 开始恢复桌面原布局");
+
+    RestoreLayoutResult result;
+
+    // 1. 加载快照
+    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 1/4: 加载快照");
+    DesktopLayoutSnapshot snapshot;
+    if (!m_snapshotManager->loadLastSnapshot(snapshot)) {
+        result.errorMessage = "没有可用的桌面布局快照。请先执行一次自动整理，系统会自动保存执行前快照。";
+        Logger::getInstance().error("DesktopAutoArrangeService: %s", result.errorMessage.c_str());
+        return result;
+    }
+
+    Logger::getInstance().info(
+        "DesktopAutoArrangeService: 快照加载成功 - 时间: %s, 图标数: %zu",
+        snapshot.timestamp.c_str(),
+        snapshot.totalCount
+    );
+
+    // 2. 检查快照有效性
+    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 2/4: 检查快照有效性");
+    if (snapshot.positions.empty()) {
+        result.errorMessage = "快照为空，无法恢复";
+        Logger::getInstance().error("DesktopAutoArrangeService: %s", result.errorMessage.c_str());
+        return result;
+    }
+
+    result.totalIcons = snapshot.totalCount;
+    Logger::getInstance().info(
+        "DesktopAutoArrangeService: 快照有效，准备恢复 %zu 个图标",
+        snapshot.totalCount
+    );
+
+    // 3. 逐个恢复图标位置
+    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 3/4: 恢复图标位置");
+
+    for (const auto& position : snapshot.positions) {
+        // 构建图标身份
+        DesktopIconIdentity identity;
+        identity.displayName = position.displayName;
+        identity.parsingName = position.parsingName;
+        identity.isFileSystemItem = true;  // 假设都是文件系统项
+
+        // 恢复到原始位置
+        std::string errorMessage;
+        bool success = m_iconWriter->moveSingleIcon(identity, position.originalPosition, errorMessage);
+
+        if (success) {
+            result.restoredIcons++;
+        } else {
+            result.failedIcons++;
+
+            // 记录失败详情
+            char posStr[32];
+            snprintf(posStr, sizeof(posStr), "(%d, %d)",
+                     position.originalPosition.x, position.originalPosition.y);
+
+            result.failures.push_back(RestoreFailureDetail(
+                position.displayName,
+                position.parsingName,
+                posStr,
+                errorMessage
+            ));
+
+            Logger::getInstance().error(
+                "DesktopAutoArrangeService: 恢复图标 '%s' 失败: %s",
+                position.displayName.c_str(),
+                errorMessage.c_str()
+            );
+        }
+    }
+
+    Logger::getInstance().info(
+        "DesktopAutoArrangeService: 恢复完成 - 成功: %zu, 失败: %zu",
+        result.restoredIcons,
+        result.failedIcons
+    );
+
+    // 4. 返回结果
+    if (result.failedIcons > 0) {
+        result.errorMessage = "部分图标恢复失败";
+        Logger::getInstance().warning(
+            "DesktopAutoArrangeService: 恢复部分失败，%zu/%zu 图标恢复失败",
+            result.failedIcons,
+            result.totalIcons
+        );
+    } else {
+        Logger::getInstance().info("DesktopAutoArrangeService: 恢复全部成功");
+    }
+
+    return result;
 }
 
 } // namespace ccdesk::core

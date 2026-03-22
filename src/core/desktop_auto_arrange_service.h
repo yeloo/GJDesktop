@@ -59,6 +59,103 @@ struct DesktopIconPositionSnapshot {
 };
 
 /**
+ * 单个图标恢复失败详情（用于UI展示）
+ */
+struct RestoreFailureDetail {
+    std::string displayName;       // 图标显示名称
+    std::string parsingName;       // 图标身份标识
+    std::string originalPosition;  // 原始坐标 "(x, y)"
+    std::string errorMessage;      // 失败原因
+
+    RestoreFailureDetail()
+        : displayName("")
+        , parsingName("")
+        , originalPosition("")
+        , errorMessage("") {}
+
+    RestoreFailureDetail(const std::string& displayName_, const std::string& parsingName_,
+                     const std::string& originalPosition_, const std::string& errorMessage_)
+        : displayName(displayName_)
+        , parsingName(parsingName_)
+        , originalPosition(originalPosition_)
+        , errorMessage(errorMessage_) {}
+};
+
+/**
+ * 恢复桌面布局结果（恢复到原位置）
+ */
+struct RestoreLayoutResult {
+    size_t totalIcons;              // 总图标数
+    size_t restoredIcons;            // 恢复成功数
+    size_t failedIcons;             // 恢复失败数
+    std::string errorMessage;         // 全局错误信息
+    std::vector<RestoreFailureDetail> failures;  // 失败详情列表
+
+    RestoreLayoutResult()
+        : totalIcons(0)
+        , restoredIcons(0)
+        , failedIcons(0)
+        , errorMessage("")
+        {}
+
+    /**
+     * 是否完全成功
+     */
+    bool success() const {
+        return failedIcons == 0 && errorMessage.empty();
+    }
+
+    /**
+     * 是否部分成功
+     */
+    bool partialSuccess() const {
+        return restoredIcons > 0;
+    }
+
+    /**
+     * 获取UI展示用的摘要文本
+     */
+    std::string getSummaryText() const {
+        std::stringstream ss;
+        ss << "恢复桌面原布局执行结果:\n";
+        ss << "========================================\n";
+        ss << "总图标数: " << totalIcons << "\n";
+        ss << "恢复成功: " << restoredIcons << "\n";
+        ss << "恢复失败: " << failedIcons << "\n";
+
+        if (failedIcons > 0) {
+            ss << "\n失败详情:\n";
+            ss << "----------------------------------------\n";
+            for (size_t i = 0; i < failures.size() && i < 10; i++) {
+                const auto& failure = failures[i];
+                ss << "[" << (i + 1) << "] " << failure.displayName << "\n";
+                ss << "    原始位置: " << failure.originalPosition << "\n";
+                ss << "    失败原因: " << failure.errorMessage << "\n";
+            }
+            if (failures.size() > 10) {
+                ss << "... 还有 " << (failures.size() - 10) << " 个失败项\n";
+            }
+        }
+
+        if (!errorMessage.empty()) {
+            ss << "\n全局错误: " << errorMessage << "\n";
+        }
+
+        ss << "========================================\n";
+
+        if (success()) {
+            ss << "✓ 恢复全部成功\n";
+        } else if (partialSuccess()) {
+            ss << "⚠ 恢复部分成功（" << failedIcons << " 个图标恢复失败）\n";
+        } else {
+            ss << "✗ 恢复失败\n";
+        }
+
+        return ss.str();
+    }
+};
+
+/**
  * 桌面图标位置快照
  */
 struct DesktopLayoutSnapshot {
@@ -267,6 +364,30 @@ public:
     AutoArrangeResult arrangeDesktop();
 
     /**
+     * 恢复桌面原布局（恢复模式 - 核心接口）
+     *
+     * @return RestoreLayoutResult 恢复结果（包含失败详情）
+     *
+     * 流程：
+     *   1. 从快照文件加载最近一次快照
+     *   2. 检查快照有效性
+     *   3. 逐个恢复图标到原始位置
+     *   4. 返回结果（RestoreLayoutResult，含失败详情）
+     *
+     * 错误处理：
+     *   - 无快照时返回错误
+     *   - 单个图标失败不影响整体流程
+     *   - 每个失败图标都记录详细失败原因
+     *   - 关键节点失败时返回 errorMessage
+     *
+     * UI提示：
+     *   - 无快照时提示用户
+     *   - 恢复后展示详细结果摘要
+     *   - 失败时给出用户可理解的提示
+     */
+    RestoreLayoutResult restoreOriginalLayout();
+
+    /**
      * 生成桌面布局规划（规划/预演模式，不执行真实写回）
      *
      * @return LayoutPlanResult 规划结果
@@ -325,18 +446,33 @@ public:
      */
     DesktopLayoutPlanner* getLayoutPlanner() const;
 
+    /**
+     * 获取快照管理器
+     *
+     * @return SnapshotManager 指针
+     */
+    SnapshotManager* getSnapshotManager() const;
+
+    /**
+     * 检查是否有可用快照
+     *
+     * @return true 如果存在快照
+     */
+    bool hasSnapshot() const;
+
 private:
     std::unique_ptr<DesktopIconAccessor> m_iconAccessor;
     std::unique_ptr<DesktopIconWriter> m_iconWriter;
     std::unique_ptr<DesktopArrangeRuleEngine> m_ruleEngine;
     std::unique_ptr<DesktopLayoutPlanner> m_layoutPlanner;
-    
+    std::unique_ptr<SnapshotManager> m_snapshotManager;  // 快照管理器
+
     /**
      * 构建图标身份信息
-     * 
+     *
      * @param icon DesktopIcon（读取结果）
      * @return DesktopIconIdentity（包含 parsingName）
-     * 
+     *
      * 注意：v1 中 parsingName 需要通过额外方式获取
      *       当前简化实现使用 displayName 作为 parsingName
      *       v2 中需要通过 SHGDN_FORPARSING 获取完整路径

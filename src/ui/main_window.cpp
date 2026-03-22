@@ -95,27 +95,30 @@ void MainWindow::initializeUI() {
     // 创建中央组件
     QWidget* centralWidget = new QWidget(this);
     setCentralWidget(centralWidget);
-    
+
     // 创建主布局
     QVBoxLayout* mainLayout = new QVBoxLayout(centralWidget);
     mainLayout->setSpacing(10);
     mainLayout->setContentsMargins(15, 15, 15, 15);
-    
+
     // 1. 状态栏区域
     QWidget* statusBar = createStatusBar();
     mainLayout->addWidget(statusBar);
-    
+
     // 2. 文件整理模块
     QWidget* fileSection = createFileOrganizeSection();
     mainLayout->addWidget(fileSection, 1);  // stretch factor 1
-    
+
     // 3. 桌面布局模块
     QWidget* layoutSection = createLayoutSection();
     mainLayout->addWidget(layoutSection, 1);  // stretch factor 1
-    
+
     // 4. 日志摘要区域
     QWidget* logSection = createLogSection();
     mainLayout->addWidget(logSection);
+
+    // 5. 初始化快照状态
+    updateSnapshotStatus();
 }
 
 QWidget* MainWindow::createStatusBar() {
@@ -218,6 +221,16 @@ QWidget* MainWindow::createLayoutSection() {
     connect(m_executeArrangeBtn, &QPushButton::clicked, this, &MainWindow::onExecuteDesktopArrange);
     buttonLayout->addWidget(m_executeArrangeBtn);
 
+    // 恢复按钮（绿色）
+    m_restoreLayoutBtn = new QPushButton(u8"恢复桌面原布局", group);
+    m_restoreLayoutBtn->setMinimumWidth(150);
+    m_restoreLayoutBtn->setStyleSheet(
+        "QPushButton { background-color: #27ae60; color: white; font-weight: bold; }"
+        "QPushButton:hover { background-color: #229954; }"
+    );
+    connect(m_restoreLayoutBtn, &QPushButton::clicked, this, &MainWindow::onRestoreOriginalLayout);
+    buttonLayout->addWidget(m_restoreLayoutBtn);
+
     m_refreshLayoutResultsBtn = new QPushButton("刷新结果", group);
     m_refreshLayoutResultsBtn->setMinimumWidth(100);
     connect(m_refreshLayoutResultsBtn, &QPushButton::clicked, this, &MainWindow::onRefreshLayoutResults);
@@ -254,6 +267,19 @@ QWidget* MainWindow::createLayoutSection() {
     statsLayout->addWidget(executeStatsLabel);
 
     mainLayout->addLayout(statsLayout);
+
+    // 快照状态显示
+    QHBoxLayout* snapshotLayout = new QHBoxLayout();
+    QLabel* snapshotLabel = new QLabel("最近快照: ", group);
+    snapshotLabel->setStyleSheet("color: #7f8c8d; font-size: 11px;");
+    snapshotLayout->addWidget(snapshotLabel);
+
+    m_snapshotStatusLabel = new QLabel("无", group);
+    m_snapshotStatusLabel->setStyleSheet("color: #95a5a6; font-size: 11px;");
+    snapshotLayout->addWidget(m_snapshotStatusLabel);
+
+    snapshotLayout->addStretch();
+    mainLayout->addLayout(snapshotLayout);
 
     // 结果显示区域
     m_layoutResultList = new QTextEdit(group);
@@ -579,9 +605,160 @@ void MainWindow::onExecuteDesktopArrange() {
     // 更新状态栏
     updateStatusBar(m_state);
 
+    // 执行成功后更新快照状态
+    updateSnapshotStatus();
+
     m_executeArrangeBtn->setEnabled(true);
     m_executeArrangeBtn->setText(u8"执行桌面自动整理");
     Logger::getInstance().info("MainWindow: 桌面自动整理执行完成");
+}
+
+void MainWindow::onRestoreOriginalLayout() {
+    if (!m_autoArrangeService) {
+        QMessageBox::warning(this, "错误", "桌面整理服务未初始化");
+        Logger::getInstance().error("MainWindow: DesktopAutoArrangeService is null");
+        return;
+    }
+
+    // 检查是否有快照
+    if (!m_autoArrangeService->hasSnapshot()) {
+        QMessageBox::information(
+            this,
+            "无法恢复",
+            u8"没有可用的桌面布局快照。\n\n"
+            "请先执行一次\"执行桌面自动整理\"，系统会自动保存执行前的快照。\n\n"
+            "快照包含：\n"
+            "• 执行前的图标位置\n"
+            "• 图标身份标识\n"
+            "• 分类信息\n\n"
+            "是否现在执行自动整理？",
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No
+        );
+
+        if (QMessageBox::Yes == QMessageBox::question(
+                this,
+                u8"提示",
+                u8"是否现在执行自动整理以创建快照？",
+                QMessageBox::Yes | QMessageBox::No,
+                QMessageBox::No
+            )) {
+            onExecuteDesktopArrange();
+        }
+
+        Logger::getInstance().info("MainWindow: 用户尝试恢复，但无可用快照");
+        return;
+    }
+
+    // 执行前确认
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        u8"确认恢复桌面原布局",
+        u8"是否将桌面图标恢复到最近一次自动整理执行前的位置？\n\n"
+        "恢复后：\n"
+        "• 图标位置将变回执行前的状态\n"
+        "• 新添加的图标不会受到影响\n\n"
+        "是否继续恢复？",
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+
+    if (reply == QMessageBox::No) {
+        Logger::getInstance().info("MainWindow: 用户取消了恢复桌面原布局");
+        return;
+    }
+
+    Logger::getInstance().info("MainWindow: 用户确认恢复桌面原布局");
+    m_restoreLayoutBtn->setEnabled(false);
+    m_restoreLayoutBtn->setText(u8"正在恢复...");
+
+    // 执行恢复
+    Logger::getInstance().info("MainWindow: 开始恢复桌面原布局");
+    ccdesk::core::RestoreLayoutResult result = m_autoArrangeService->restoreOriginalLayout();
+
+    // 更新状态
+    m_state.restoreTotalCount = static_cast<int>(result.totalIcons);
+    m_state.restoreSuccessCount = static_cast<int>(result.restoredIcons);
+    m_state.restoreFailedCount = static_cast<int>(result.failedIcons);
+
+    // 转换失败详情
+    m_state.restoreExecutionDetails.clear();
+    for (const auto& failure : result.failures) {
+        RestoreResultItem item;
+        item.displayName = QString::fromStdString(failure.displayName);
+        item.originalPosition = QString::fromStdString(failure.originalPosition);
+        item.status = "失败";
+        item.failureReason = QString::fromStdString(failure.errorMessage);
+        m_state.restoreExecutionDetails.push_back(item);
+    }
+
+    // 显示恢复结果
+    QString summaryText = QString::fromStdString(result.getSummaryText());
+    m_layoutResultList->setText(summaryText);
+
+    // 根据结果显示不同的提示
+    if (result.success()) {
+        m_state.lastOperation = u8"恢复桌面原布局";
+        m_state.lastOperationResult = "成功";
+        m_state.lastOperationDetail = QString::fromStdString(
+            u8"全部 " + std::to_string(result.restoredIcons) + u8" 个图标恢复成功"
+        );
+
+        QMessageBox::information(
+            this,
+            u8"恢复完成",
+            QString::fromStdString(result.getSummaryText())
+        );
+
+        Logger::getInstance().info(
+            "MainWindow: 桌面原布局恢复全部成功，恢复 %zu 个图标",
+            result.restoredIcons
+        );
+    } else if (result.partialSuccess()) {
+        m_state.lastOperation = u8"恢复桌面原布局";
+        m_state.lastOperationResult = u8"部分成功";
+        m_state.lastOperationDetail = QString::fromStdString(
+            u8"恢复成功: " + std::to_string(result.restoredIcons) +
+            u8", 恢复失败: " + std::to_string(result.failedIcons)
+        );
+
+        QMessageBox::warning(
+            this,
+            u8"恢复部分成功",
+            QString::fromStdString(result.getSummaryText())
+        );
+
+        Logger::getInstance().warning(
+            "MainWindow: 桌面原布局恢复部分成功，成功: %zu, 失败: %zu",
+            result.restoredIcons,
+            result.failedIcons
+        );
+    } else {
+        m_state.lastOperation = u8"恢复桌面原布局";
+        m_state.lastOperationResult = "失败";
+        m_state.lastOperationDetail = QString::fromStdString(result.errorMessage);
+
+        QMessageBox::critical(
+            this,
+            u8"恢复失败",
+            QString::fromStdString(result.getSummaryText())
+        );
+
+        Logger::getInstance().error(
+            "MainWindow: 桌面原布局恢复失败，错误: %s",
+            result.errorMessage.c_str()
+        );
+    }
+
+    // 更新状态栏
+    updateStatusBar(m_state);
+
+    // 恢复成功后清除快照状态（可选，这里选择保留快照以便用户可以多次恢复）
+    // updateSnapshotStatus();
+
+    m_restoreLayoutBtn->setEnabled(true);
+    m_restoreLayoutBtn->setText(u8"恢复桌面原布局");
+    Logger::getInstance().info("MainWindow: 桌面原布局恢复执行完成");
 }
 
 void MainWindow::onShowSettings() {
@@ -828,8 +1005,47 @@ void MainWindow::triggerExecuteArrangeFromTray() {
     onExecuteDesktopArrange();
 }
 
+void MainWindow::triggerRestoreFromTray() {
+    Logger::getInstance().info("MainWindow: 从托盘菜单触发恢复桌面原布局");
+
+    // 显示主窗口
+    if (!isVisible()) {
+        showNormal();
+        activateWindow();
+        raise();
+    }
+
+    onRestoreOriginalLayout();
+}
+
 void MainWindow::showSettingsDialog() {
     onShowSettings();
+}
+
+void MainWindow::updateSnapshotStatus() {
+    if (!m_autoArrangeService) {
+        return;
+    }
+
+    bool hasSnapshot = m_autoArrangeService->hasSnapshot();
+    m_state.hasSnapshotAvailable = hasSnapshot;
+
+    if (hasSnapshot) {
+        m_state.lastSnapshotTime = "可用";
+        m_snapshotStatusLabel->setStyleSheet("color: #27ae60; font-weight: bold;");
+    } else {
+        m_state.lastSnapshotTime = "无";
+        m_snapshotStatusLabel->setStyleSheet("color: #95a5a6; font-size: 11px;");
+    }
+
+    m_snapshotStatusLabel->setText(QString::fromStdString(
+        m_state.lastSnapshotTime.toStdString()
+    ));
+
+    Logger::getInstance().info(
+        "MainWindow: 快照状态已更新 - %s",
+        hasSnapshot ? "有快照" : "无快照"
+    );
 }
 
 void MainWindow::hideToTray() {
