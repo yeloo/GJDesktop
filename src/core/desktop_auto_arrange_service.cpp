@@ -396,8 +396,8 @@ DesktopLayoutSnapshot DesktopAutoArrangeService::createPositionSnapshot(
         }
 
         // 格式检查：文件系统项parsingName应该匹配有效的Windows路径格式
-        // 匹配盘符路径：C:\, C:/, D:\, D:/ 等
-        // 或UNC路径：\\server\share
+        // 匹配盘符路径：C:, C:/, D:, D:/ 等
+        // 或UNC路径：双反斜杠开头
         bool validFormat = false;
         if (pn.length() >= 3) {
             // 盘符路径检查：C:\ 或 C:/ 或 D:\ 或 D:/ 等
@@ -406,7 +406,7 @@ DesktopLayoutSnapshot DesktopAutoArrangeService::createPositionSnapshot(
             }
         }
         if (!validFormat && pn.length() >= 2) {
-            // UNC路径检查：\\
+            // UNC路径检查：双反斜杠
             if (pn[0] == '\\' && pn[1] == '\\') {
                 validFormat = true;
             }
