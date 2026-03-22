@@ -9,11 +9,7 @@
 #include "desktop_icon_writer.h"
 #include "desktop_arrange_rule_engine.h"
 #include "desktop_layout_planner.h"
-
-// 前向声明 SnapshotManager
-namespace ccdesk::core {
-class SnapshotManager;
-}
+#include "snapshot_manager.h"
 
 namespace ccdesk::core {
 
