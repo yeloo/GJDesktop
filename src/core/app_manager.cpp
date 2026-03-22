@@ -109,6 +109,11 @@ bool AppManager::initialize() {
 
     Logger::getInstance().info("AppManager: FileOrganizer initialized");
 
+    // 初始化 DesktopAutoArrangeService（自动整理服务）- 必须在 UI 初始化之前
+    if (!initializeAutoArrangeService()) {
+        Logger::getInstance().warning("AppManager: DesktopAutoArrangeService initialization failed (non-critical)");
+    }
+
     if (!initializeUI()) {
         Logger::getInstance().error("AppManager: initialize() 失败 - UI 初始化失败");
         return false;
@@ -126,11 +131,6 @@ bool AppManager::initialize() {
     // 初始化 DesktopIconAccessor（可选功能，不预检查桌面可访问性）
     if (!initializeDesktopIconAccessor()) {
         Logger::getInstance().warning("AppManager: DesktopIconAccessor initialization failed (non-critical)");
-    }
-
-    // 初始化 DesktopAutoArrangeService（自动整理服务）
-    if (!initializeAutoArrangeService()) {
-        Logger::getInstance().warning("AppManager: DesktopAutoArrangeService initialization failed (non-critical)");
     }
 
     // 恢复分区
