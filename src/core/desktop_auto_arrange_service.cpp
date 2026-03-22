@@ -1,4 +1,5 @@
 #include "desktop_auto_arrange_service.h"
+#include "snapshot_manager.h"
 #include "logger.h"
 #include <sstream>
 
