@@ -20,6 +20,8 @@ DesktopAutoArrangeService::DesktopAutoArrangeService() {
     m_snapshotManager = std::make_unique<SnapshotManager>();
 }
 
+DesktopAutoArrangeService::~DesktopAutoArrangeService() = default;
+
 //=============================================================================
 // 公开接口实现
 //=============================================================================

@@ -12,10 +12,7 @@ struct DesktopIconIdentity;
 
 /**
  * 图标分类枚举（v1）
-
-/**
- * 图标分类枚举（v1）
- * 
+ *
  * 固定分类，不扩展配置化
  */
 enum class IconCategory {

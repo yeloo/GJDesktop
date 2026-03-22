@@ -1,8 +1,21 @@
 #ifndef DESKTOP_SNAPSHOT_TYPES_H
 #define DESKTOP_SNAPSHOT_TYPES_H
 
+#include <cstddef>
 #include <string>
 #include <vector>
+#include <sstream>
+
+// Windows POINT 类型定义
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+// 非 Windows 平台的 POINT 定义
+struct POINT { long x; long y; };
+#endif
 
 namespace ccdesk::core {
 

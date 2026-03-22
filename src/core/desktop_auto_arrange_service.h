@@ -284,7 +284,7 @@ struct LayoutPlanResult {
 class DesktopAutoArrangeService {
 public:
     DesktopAutoArrangeService();
-    ~DesktopAutoArrangeService() = default;
+    ~DesktopAutoArrangeService();
 
     /**
      * 执行自动整理（真实执行模式 - 核心接口）
