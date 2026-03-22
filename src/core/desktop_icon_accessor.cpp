@@ -231,6 +231,14 @@ DesktopIconSnapshot DesktopIconAccessor::readUsingCOMInterface() {
             }
         }
 
+        // 【诊断】如果 parsingName 为空，记录警告
+        if (parsingName.empty()) {
+            Logger::getInstance().warning(
+                "DesktopIconAccessor: parsingName 为空 - displayName: '%s', 可能是虚拟项或特殊图标",
+                displayName.c_str()
+            );
+        }
+
         // 3. 判断是否为文件系统项（通过 SFGAO_FILESYSTEM 属性）
         SFGAOF sfgao = SFGAO_FILESYSTEM;
         hr = spShellFolder->GetAttributesOf(1, const_cast<LPCITEMIDLIST*>(&pidl), &sfgao);

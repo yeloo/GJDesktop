@@ -380,6 +380,7 @@ DesktopLayoutSnapshot DesktopAutoArrangeService::createPositionSnapshot(
     snapshot.timestamp = timeBuffer;
 
     // 保存每个图标的位置
+    size_t skippedCount = 0;  // 因 parsingName 为空而跳过的图标数
     for (const auto& icon : icons) {
         if (!icon.identity.parsingName.empty()) {
             snapshot.positions.push_back(DesktopIconPositionSnapshot(
@@ -388,15 +389,30 @@ DesktopLayoutSnapshot DesktopAutoArrangeService::createPositionSnapshot(
                 icon.currentPosition,
                 icon.category
             ));
+        } else {
+            skippedCount++;
+            Logger::getInstance().warning(
+                "DesktopAutoArrangeService: 跳过图标 '%s' - parsingName 为空，可能是虚拟项或特殊图标",
+                icon.identity.displayName.c_str()
+            );
         }
     }
 
     snapshot.totalCount = snapshot.positions.size();
 
     Logger::getInstance().info(
-        "DesktopAutoArrangeService: 位置快照创建完成 - 保存 %zu 个图标位置",
-        snapshot.totalCount
+        "DesktopAutoArrangeService: 位置快照创建完成 - 保存 %zu 个图标位置（跳过 %zu 个）",
+        snapshot.totalCount,
+        skippedCount
     );
+
+    // 如果跳过了太多图标，记录警告
+    if (skippedCount > 0) {
+        Logger::getInstance().warning(
+            "DesktopAutoArrangeService: 警告 - 跳过了 %zu 个图标（parsingName 为空），这些图标将不会被保存到快照中",
+            skippedCount
+        );
+    }
 
     return snapshot;
 }

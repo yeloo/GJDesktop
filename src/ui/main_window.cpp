@@ -23,6 +23,22 @@
 #include <QGroupBox>
 #include <QScrollArea>
 #include <QTimer>
+#include <fstream>
+#include <sstream>
+#include <vector>
+
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
+#include <QLabel>
+#include <QDialog>
+#include <QListWidget>
+#include <QListWidgetItem>
+#include <QMessageBox>
+#include <QCloseEvent>
+#include <QGroupBox>
+#include <QScrollArea>
+#include <QTimer>
 
 using namespace ccdesk::core;
 
@@ -885,25 +901,41 @@ void MainWindow::showLayoutResults(const MainWindowState& state) {
 }
 
 void MainWindow::updateLogSummary() {
-    // 读取日志文件的最后几行
-    std::string logFile = "ccdesk.log";
+    // 从 Logger 获取日志文件路径
+    std::string logFile = Logger::getInstance().getLogPath();
     std::string summary = "";
-    
+
+    // 检查日志文件是否已设置
+    if (logFile.empty()) {
+        summary = "日志文件路径未设置";
+        m_logSummary->setText(QString::fromStdString(summary));
+        return;
+    }
+
     try {
         std::ifstream file(logFile, std::ios::ate);
         if (file.is_open()) {
             std::streampos fileSize = file.tellg();
+
+            // 如果文件为空，直接返回
+            if (fileSize == 0) {
+                summary = "日志文件为空";
+                file.close();
+                m_logSummary->setText(QString::fromStdString(summary));
+                return;
+            }
+
             const int maxBytes = 2000;  // 读取最后2KB
             int readSize = static_cast<int>(std::min(static_cast<std::streampos>(maxBytes), fileSize));
-            
+
             file.seekg(-readSize, std::ios::end);
-            
+
             std::vector<char> buffer(readSize);
             file.read(buffer.data(), readSize);
             file.close();
-            
+
             summary = std::string(buffer.data(), readSize);
-            
+
             // 只保留最后20行
             std::vector<std::string> lines;
             std::istringstream iss(summary);
@@ -911,20 +943,24 @@ void MainWindow::updateLogSummary() {
             while (std::getline(iss, line)) {
                 lines.push_back(line);
             }
-            
+
             if (lines.size() > 20) {
                 lines.erase(lines.begin(), lines.begin() + (lines.size() - 20));
             }
-            
+
             summary = "";
             for (const auto& l : lines) {
                 summary += l + "\n";
             }
+        } else {
+            summary = "无法打开日志文件: " + logFile;
         }
+    } catch (const std::exception& e) {
+        summary = "读取日志文件失败: " + std::string(e.what());
     } catch (...) {
-        summary = "无法读取日志文件";
+        summary = "读取日志文件时发生未知错误";
     }
-    
+
     m_logSummary->setText(QString::fromStdString(summary));
 }
 
