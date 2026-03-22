@@ -282,14 +282,16 @@ void MainWindow::onGenerateFileOrganizePlan() {
     m_fileOrganizer->cancelOrganize();
     
     // 生成整理规划（不移动文件，只分析分类）
-    m_lastFilePlan = m_fileOrganizer->generateOrganizePlan();
+    m_lastFilePlan = std::make_unique<ccdesk::core::OrganizePlan>(
+        m_fileOrganizer->generateOrganizePlan()
+    );
     
     // 更新状态
-    m_state.fileTotalItems = m_lastFilePlan.totalFiles;
+    m_state.fileTotalItems = m_lastFilePlan->totalFiles;
     m_state.fileCategorizedItems = 0;
     
     // 计算已分类文件数
-    for (const auto& item : m_lastFilePlan.items) {
+    for (const auto& item : m_lastFilePlan->items) {
         if (item.status == OrganizePreviewItem::Movable) {
             m_state.fileCategorizedItems++;
             QString category = QString::fromStdString(item.categoryName);
@@ -304,12 +306,12 @@ void MainWindow::onGenerateFileOrganizePlan() {
     m_generateFilePlanBtn->setEnabled(true);
     m_generateFilePlanBtn->setText("生成文件分类规划");
     
-    Logger::getInstance().info("MainWindow: 文件分类规划生成完成，总文件数: " + 
-                             std::to_string(m_lastFilePlan.totalFiles));
+    Logger::getInstance().info("MainWindow: 文件分类规划生成完成，总文件数: " +
+                             std::to_string(m_lastFilePlan->totalFiles));
 }
 
 void MainWindow::onRefreshFileResults() {
-    if (!m_lastFilePlan.items.empty()) {
+    if (m_lastFilePlan && !m_lastFilePlan->items.empty()) {
         showFileOrganizeResults(m_state);
         Logger::getInstance().info("MainWindow: 刷新文件整理结果显示");
     } else {
@@ -329,20 +331,22 @@ void MainWindow::onGenerateLayoutPlan() {
     m_generateLayoutPlanBtn->setText("正在生成...");
     
     // 生成桌面布局规划（不执行写回）
-    m_lastLayoutPlan = m_autoArrangeService->generateLayoutPlan();
+    m_lastLayoutPlan = std::make_unique<ccdesk::core::LayoutPlanResult>(
+        m_autoArrangeService->generateLayoutPlan()
+    );
     
     // 更新状态
-    m_state.iconTotalCount = static_cast<int>(m_lastLayoutPlan.totalIcons);
-    m_state.iconCategorizedCount = static_cast<int>(m_lastLayoutPlan.categorizedIcons);
-    m_state.iconPlannedCount = static_cast<int>(m_lastLayoutPlan.plannedIcons);
+    m_state.iconTotalCount = static_cast<int>(m_lastLayoutPlan->totalIcons);
+    m_state.iconCategorizedCount = static_cast<int>(m_lastLayoutPlan->categorizedIcons);
+    m_state.iconPlannedCount = static_cast<int>(m_lastLayoutPlan->plannedIcons);
     
     // 如果规划失败，显示错误
-    if (!m_lastLayoutPlan.success()) {
+    if (!m_lastLayoutPlan->success()) {
         m_state.lastOperation = "生成桌面布局规划";
         m_state.lastOperationResult = "失败";
-        m_state.lastOperationDetail = QString::fromStdString(m_lastLayoutPlan.errorMessage);
-        QMessageBox::warning(this, "规划失败", 
-                           QString::fromStdString(m_lastLayoutPlan.errorMessage));
+        m_state.lastOperationDetail = QString::fromStdString(m_lastLayoutPlan->errorMessage);
+        QMessageBox::warning(this, "规划失败",
+                           QString::fromStdString(m_lastLayoutPlan->errorMessage));
     } else {
         // 获取布局规划器
         DesktopLayoutPlanner* planner = m_autoArrangeService->getLayoutPlanner();
@@ -389,12 +393,12 @@ void MainWindow::onGenerateLayoutPlan() {
     m_generateLayoutPlanBtn->setEnabled(true);
     m_generateLayoutPlanBtn->setText("生成桌面布局规划");
     
-    Logger::getInstance().info("MainWindow: 桌面布局规划生成完成，总图标数: " + 
-                             std::to_string(m_lastLayoutPlan.totalIcons));
+    Logger::getInstance().info("MainWindow: 桌面布局规划生成完成，总图标数: " +
+                             std::to_string(m_lastLayoutPlan->totalIcons));
 }
 
 void MainWindow::onRefreshLayoutResults() {
-    if (m_lastLayoutPlan.totalIcons > 0) {
+    if (m_lastLayoutPlan && m_lastLayoutPlan->totalIcons > 0) {
         showLayoutResults(m_state);
         Logger::getInstance().info("MainWindow: 刷新桌面布局结果显示");
     } else {
@@ -451,22 +455,22 @@ void MainWindow::updateStatusBar(const MainWindowState& state) {
 }
 
 void MainWindow::showFileOrganizeResults(const MainWindowState& state) {
-    if (m_lastFilePlan.items.empty()) {
+    if (!m_lastFilePlan || m_lastFilePlan->items.empty()) {
         m_fileResultList->setText("没有文件分类结果");
         return;
     }
     
     QString resultText;
     resultText += QString("=== 文件分类规划结果 ===\n");
-    resultText += QString("桌面路径: %1\n").arg(QString::fromStdString(m_lastFilePlan.desktopPath));
+    resultText += QString("桌面路径: %1\n").arg(QString::fromStdString(m_lastFilePlan->desktopPath));
     resultText += QString("总文件数: %1 | 已分类: %2\n\n")
-                      .arg(m_lastFilePlan.totalFiles)
+                      .arg(m_lastFilePlan->totalFiles)
                       .arg(state.fileCategorizedItems);
     
     resultText += QString("【分类统计】\n");
     std::vector<FileCategory> fixedCategories = DesktopLayoutManager::getFixedCategories();
     for (FileCategory cat : fixedCategories) {
-        int count = m_lastFilePlan.getCategoryCount(cat);
+        int count = m_lastFilePlan->getCategoryCount(cat);
         if (count > 0) {
             QString categoryName = QString::fromStdString(DesktopLayoutManager::getCategoryName(cat));
             resultText += QString("  %1: %2 个文件\n").arg(categoryName).arg(count);
@@ -474,8 +478,8 @@ void MainWindow::showFileOrganizeResults(const MainWindowState& state) {
     }
     
     resultText += QString("\n【文件明细】\n");
-    for (size_t i = 0; i < m_lastFilePlan.items.size(); ++i) {
-        const auto& item = m_lastFilePlan.items[i];
+    for (size_t i = 0; i < m_lastFilePlan->items.size(); ++i) {
+        const auto& item = m_lastFilePlan->items[i];
         OrganizeResultItem resultItem = formatOrganizeResultItem(item);
         
         QString statusIcon;
@@ -502,16 +506,17 @@ void MainWindow::showLayoutResults(const MainWindowState& state) {
     QString resultText;
     resultText += QString("=== 桌面布局规划结果 ===\n");
     
-    if (!m_lastLayoutPlan.success()) {
-        resultText += QString("规划失败: %1\n").arg(QString::fromStdString(m_lastLayoutPlan.errorMessage));
+    if (!m_lastLayoutPlan || !m_lastLayoutPlan->success()) {
+        std::string errorMsg = m_lastLayoutPlan ? m_lastLayoutPlan->errorMessage : "未生成规划";
+        resultText += QString("规划失败: %1\n").arg(QString::fromStdString(errorMsg));
         m_layoutResultList->setText(resultText);
         return;
     }
     
     resultText += QString("总图标数: %1 | 已分类: %2 | 已规划: %3\n\n")
-                      .arg(m_lastLayoutPlan.totalIcons)
-                      .arg(m_lastLayoutPlan.categorizedIcons)
-                      .arg(m_lastLayoutPlan.plannedIcons);
+                      .arg(m_lastLayoutPlan->totalIcons)
+                      .arg(m_lastLayoutPlan->categorizedIcons)
+                      .arg(m_lastLayoutPlan->plannedIcons);
     
     resultText += QString("【分类统计】\n");
     if (!state.iconCategoryCounts.empty()) {

@@ -10,6 +10,7 @@
 #include <QScrollArea>
 #include <QFrame>
 #include <QProgressBar>
+#include <QTextEdit>
 
 class QPushButton;
 class QWidget;
@@ -17,7 +18,6 @@ class QVBoxLayout;
 class QHBoxLayout;
 class QGridLayout;
 class QTabWidget;
-class QTextEdit;
 class QGroupBox;
 class QDialog;
 
@@ -176,10 +176,10 @@ private:
     QTimer* m_logUpdateTimer;  // 定时更新日志摘要
     
     // 最近的文件整理规划结果
-    ccdesk::core::OrganizePlan m_lastFilePlan;
+    std::unique_ptr<ccdesk::core::OrganizePlan> m_lastFilePlan;
     
     // 最近的桌面布局规划结果
-    ccdesk::core::LayoutPlanResult m_lastLayoutPlan;
+    std::unique_ptr<ccdesk::core::LayoutPlanResult> m_lastLayoutPlan;
 };
 
 } // namespace ccdesk::ui
