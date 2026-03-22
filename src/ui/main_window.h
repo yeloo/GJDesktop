@@ -52,19 +52,32 @@ struct LayoutResultItem {
     QString status;  // "已规划"
 };
 
+// 数据模型：桌面自动整理执行结果展示项
+struct ArrangeExecuteResultItem {
+    QString displayName;
+    QString targetPosition;
+    QString status;  // "成功" / "失败"
+    QString failureReason;  // 失败原因
+};
+
 // 数据模型：主窗口状态摘要
 struct MainWindowState {
     // 文件整理模块状态
     int fileTotalItems = 0;
     int fileCategorizedItems = 0;
     std::map<QString, int> fileCategoryCounts;  // category name -> count
-    
+
     // 桌面布局模块状态
     int iconTotalCount = 0;
     int iconCategorizedCount = 0;
     int iconPlannedCount = 0;
     std::map<QString, int> iconCategoryCounts;
-    
+
+    // 桌面自动整理执行结果状态
+    int arrangeMovedCount = 0;
+    int arrangeFailedCount = 0;
+    std::vector<ArrangeExecuteResultItem> arrangeExecutionDetails;
+
     // 最近操作结果
     QString lastOperation;
     QString lastOperationResult;  // "成功" / "失败"
@@ -88,17 +101,21 @@ public slots:
     // 从托盘触发的槽
     void triggerOrganizeFromTray();
     void triggerLayoutFromTray();
+    void triggerExecuteArrangeFromTray();
     void showSettingsDialog();
 
 private slots:
     // 文件整理模块操作
     void onGenerateFileOrganizePlan();
     void onRefreshFileResults();
-    
+
     // 桌面布局模块操作
     void onGenerateLayoutPlan();
     void onRefreshLayoutResults();
-    
+
+    // 桌面自动整理执行操作
+    void onExecuteDesktopArrange();
+
     // 设置
     void onShowSettings();
     
@@ -171,6 +188,7 @@ private:
     QPushButton* m_refreshFileResultsBtn;
     QPushButton* m_generateLayoutPlanBtn;
     QPushButton* m_refreshLayoutResultsBtn;
+    QPushButton* m_executeArrangeBtn;  // 执行桌面自动整理按钮
     QPushButton* m_settingsBtn;
     
     QTimer* m_logUpdateTimer;  // 定时更新日志摘要

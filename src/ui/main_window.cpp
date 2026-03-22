@@ -126,13 +126,13 @@ QWidget* MainWindow::createStatusBar() {
     QHBoxLayout* layout = new QHBoxLayout(frame);
     layout->setContentsMargins(10, 5, 10, 5);
     
-    QLabel* titleLabel = new QLabel("CCDesk - 桌面收纳盒规划器", frame);
+    QLabel* titleLabel = new QLabel(u8"CCDesk - 桌面图标自动整理工具", frame);
     titleLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50;");
     layout->addWidget(titleLabel);
-    
+
     layout->addStretch();
-    
-    QLabel* statusLabel = new QLabel("就绪 - 规划模式（不会移动文件）", frame);
+
+    QLabel* statusLabel = new QLabel(u8"就绪 - 支持规划与真实执行", frame);
     statusLabel->setStyleSheet("color: #7f8c8d; font-size: 11px;");
     layout->addWidget(statusLabel);
     
@@ -193,59 +193,77 @@ QWidget* MainWindow::createFileOrganizeSection() {
 }
 
 QWidget* MainWindow::createLayoutSection() {
-    QGroupBox* group = new QGroupBox("桌面布局规划", this);
+    QGroupBox* group = new QGroupBox("桌面布局规划与执行", this);
     group->setStyleSheet("QGroupBox { font-weight: bold; color: #2c3e50; margin-top: 10px; }"
                          "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; }");
-    
+
     QVBoxLayout* mainLayout = new QVBoxLayout(group);
-    
+
     // 顶部按钮行
     QHBoxLayout* buttonLayout = new QHBoxLayout();
-    
+
+    // 规划按钮
     m_generateLayoutPlanBtn = new QPushButton("生成桌面布局规划", group);
     m_generateLayoutPlanBtn->setMinimumWidth(150);
     connect(m_generateLayoutPlanBtn, &QPushButton::clicked, this, &MainWindow::onGenerateLayoutPlan);
     buttonLayout->addWidget(m_generateLayoutPlanBtn);
-    
+
+    // 执行按钮（用不同颜色区分）
+    m_executeArrangeBtn = new QPushButton(u8"执行桌面自动整理", group);
+    m_executeArrangeBtn->setMinimumWidth(150);
+    m_executeArrangeBtn->setStyleSheet(
+        "QPushButton { background-color: #e74c3c; color: white; font-weight: bold; }"
+        "QPushButton:hover { background-color: #c0392b; }"
+    );
+    connect(m_executeArrangeBtn, &QPushButton::clicked, this, &MainWindow::onExecuteDesktopArrange);
+    buttonLayout->addWidget(m_executeArrangeBtn);
+
     m_refreshLayoutResultsBtn = new QPushButton("刷新结果", group);
     m_refreshLayoutResultsBtn->setMinimumWidth(100);
     connect(m_refreshLayoutResultsBtn, &QPushButton::clicked, this, &MainWindow::onRefreshLayoutResults);
     buttonLayout->addWidget(m_refreshLayoutResultsBtn);
-    
+
     buttonLayout->addStretch();
     mainLayout->addLayout(buttonLayout);
-    
+
     // 统计信息区域
     QHBoxLayout* statsLayout = new QHBoxLayout();
     m_iconTotalLabel = new QLabel("总图标数: 0", group);
     m_iconTotalLabel->setStyleSheet("color: #2c3e50; font-weight: bold;");
     statsLayout->addWidget(m_iconTotalLabel);
-    
+
     m_iconCategorizedLabel = new QLabel("已分类: 0", group);
     m_iconCategorizedLabel->setStyleSheet("color: #27ae60; font-weight: bold;");
     statsLayout->addWidget(m_iconCategorizedLabel);
-    
+
     m_iconPlannedLabel = new QLabel("已规划: 0", group);
     m_iconPlannedLabel->setStyleSheet("color: #2980b9; font-weight: bold;");
     statsLayout->addWidget(m_iconPlannedLabel);
-    
+
+    // 执行统计标签（新增）
+    QLabel* arrangeMovedLabel = new QLabel("移动成功: 0", group);
+    arrangeMovedLabel->setStyleSheet("color: #27ae60; font-weight: bold;");
+    m_iconStatsLabel = arrangeMovedLabel;  // 复用现有变量
+    statsLayout->addWidget(arrangeMovedLabel);
+
     statsLayout->addStretch();
-    
-    m_iconStatsLabel = new QLabel("分类统计: 无", group);
-    m_iconStatsLabel->setStyleSheet("color: #7f8c8d; font-size: 11px;");
-    statsLayout->addWidget(m_iconStatsLabel);
-    
+
+    QLabel* executeStatsLabel = new QLabel("移动失败: 0", group);
+    executeStatsLabel->setStyleSheet("color: #e74c3c; font-weight: bold;");
+    executeStatsLabel->setObjectName("executeFailedLabel");  // 用于后续访问
+    statsLayout->addWidget(executeStatsLabel);
+
     mainLayout->addLayout(statsLayout);
-    
+
     // 结果显示区域
     m_layoutResultList = new QTextEdit(group);
     m_layoutResultList->setReadOnly(true);
-    m_layoutResultList->setMaximumHeight(150);
+    m_layoutResultList->setMaximumHeight(200);
     m_layoutResultList->setStyleSheet("QTextEdit { border: 1px solid #bdc3c7; border-radius: 3px; "
                                      "background-color: #ffffff; font-family: 'Courier New', monospace; font-size: 10px; }");
-    m_layoutResultList->setPlaceholderText(u8"点击\"生成桌面布局规划\"按钮开始分析...");
+    m_layoutResultList->setPlaceholderText(u8"点击\"生成桌面布局规划\"按钮开始分析，或点击\"执行桌面自动整理\"按钮真实整理桌面...");
     mainLayout->addWidget(m_layoutResultList);
-    
+
     return group;
 }
 
@@ -404,6 +422,166 @@ void MainWindow::onRefreshLayoutResults() {
     } else {
         QMessageBox::information(this, "提示", "暂无桌面布局结果，请先生成规划");
     }
+}
+
+void MainWindow::onExecuteDesktopArrange() {
+    if (!m_autoArrangeService) {
+        QMessageBox::warning(this, "错误", "桌面整理服务未初始化");
+        Logger::getInstance().error("MainWindow: DesktopAutoArrangeService is null");
+        return;
+    }
+
+    // P0-4: 执行前确认弹窗
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        u8"确认执行桌面自动整理",
+        u8"是否根据当前规划重新排列桌面图标？\n\n"
+        "执行后桌面图标位置将发生变化。\n\n"
+        "建议：\n"
+        "• 确保桌面图标可以正常访问\n"
+        "• 建议先执行\"生成桌面布局规划\"预览效果\n"
+        "• 如效果不满意，可稍后添加\"恢复原布局\"功能\n\n"
+        "是否继续执行？",
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+
+    if (reply == QMessageBox::No) {
+        Logger::getInstance().info("MainWindow: 用户取消了桌面自动整理执行");
+        return;
+    }
+
+    Logger::getInstance().info("MainWindow: 用户确认执行桌面自动整理");
+    m_executeArrangeBtn->setEnabled(false);
+    m_executeArrangeBtn->setText(u8"正在执行...");
+
+    // 执行前基础校验
+    // 先尝试读取桌面图标，确保可以访问
+    DesktopIconAccessor* accessor = m_autoArrangeService->getIconAccessor();
+    if (!accessor) {
+        QMessageBox::critical(this, "错误", "无法访问桌面图标读取器");
+        m_executeArrangeBtn->setEnabled(true);
+        m_executeArrangeBtn->setText(u8"执行桌面自动整理");
+        return;
+    }
+
+    DesktopIconSnapshot snapshot = accessor->readDesktopIcons();
+    if (!snapshot.success()) {
+        QMessageBox::critical(
+            this,
+            "执行失败",
+            u8"无法读取桌面图标，请确保：\n"
+            "• 桌面可正常访问\n"
+            "• 没有其他程序占用桌面\n\n"
+            "错误信息: " + QString::fromStdString(snapshot.errorMessage)
+        );
+        m_executeArrangeBtn->setEnabled(true);
+        m_executeArrangeBtn->setText(u8"执行桌面自动整理");
+        return;
+    }
+
+    if (snapshot.icons.empty()) {
+        QMessageBox::warning(this, "执行失败", "桌面上没有可整理的图标");
+        m_executeArrangeBtn->setEnabled(true);
+        m_executeArrangeBtn->setText(u8"执行桌面自动整理");
+        return;
+    }
+
+    // 执行真实自动整理
+    Logger::getInstance().info("MainWindow: 开始执行桌面自动整理");
+    ccdesk::core::AutoArrangeResult result = m_autoArrangeService->arrangeDesktop();
+
+    // 更新状态
+    m_state.iconTotalCount = static_cast<int>(result.totalIcons);
+    m_state.iconCategorizedCount = static_cast<int>(result.categorizedIcons);
+    m_state.iconPlannedCount = static_cast<int>(result.plannedIcons);
+    m_state.arrangeMovedCount = static_cast<int>(result.movedIcons);
+    m_state.arrangeFailedCount = static_cast<int>(result.failedIcons);
+
+    // 转换失败详情
+    m_state.arrangeExecutionDetails.clear();
+    for (const auto& failure : result.failures) {
+        ArrangeExecuteResultItem item;
+        item.displayName = QString::fromStdString(failure.displayName);
+        item.targetPosition = QString::fromStdString(failure.targetPosition);
+        item.status = "失败";
+        item.failureReason = QString::fromStdString(failure.errorMessage);
+        m_state.arrangeExecutionDetails.push_back(item);
+    }
+
+    // 显示执行结果
+    QString summaryText = QString::fromStdString(result.getSummaryText());
+    m_layoutResultList->setText(summaryText);
+
+    // 更新统计标签
+    m_iconTotalLabel->setText(QString("总图标数: %1").arg(result.totalIcons));
+    m_iconCategorizedLabel->setText(QString("已分类: %1").arg(result.categorizedIcons));
+    m_iconPlannedLabel->setText(QString("已规划: %1").arg(result.plannedIcons));
+
+    // 更新执行统计
+    m_iconStatsLabel->setText(QString("移动成功: %1").arg(result.movedIcons));
+
+    // 查找失败统计标签
+    QLabel* executeFailedLabel = findChild<QLabel*>("executeFailedLabel");
+    if (executeFailedLabel) {
+        executeFailedLabel->setText(QString("移动失败: %1").arg(result.failedIcons));
+    }
+
+    // 根据结果显示不同的提示
+    if (result.success()) {
+        m_state.lastOperation = u8"执行桌面自动整理";
+        m_state.lastOperationResult = "成功";
+        m_state.lastOperationDetail = QString::fromStdString(u8"全部 %1 个图标移动成功").arg(result.movedIcons);
+
+        QMessageBox::information(
+            this,
+            u8"整理完成",
+            QString::fromStdString(result.getSummaryText())
+        );
+
+        Logger::getInstance().info("MainWindow: 桌面自动整理全部成功，移动 %zu 个图标", result.movedIcons);
+    } else if (result.partialSuccess()) {
+        m_state.lastOperation = u8"执行桌面自动整理";
+        m_state.lastOperationResult = u8"部分成功";
+        m_state.lastOperationDetail = QString::fromStdString(
+            u8"移动成功: " + std::to_string(result.movedIcons) +
+            u8", 移动失败: " + std::to_string(result.failedIcons)
+        );
+
+        QMessageBox::warning(
+            this,
+            u8"整理部分成功",
+            QString::fromStdString(result.getSummaryText())
+        );
+
+        Logger::getInstance().warning(
+            "MainWindow: 桌面自动整理部分成功，成功: %zu, 失败: %zu",
+            result.movedIcons,
+            result.failedIcons
+        );
+    } else {
+        m_state.lastOperation = u8"执行桌面自动整理";
+        m_state.lastOperationResult = "失败";
+        m_state.lastOperationDetail = QString::fromStdString(result.errorMessage);
+
+        QMessageBox::critical(
+            this,
+            u8"整理失败",
+            QString::fromStdString(result.getSummaryText())
+        );
+
+        Logger::getInstance().error(
+            "MainWindow: 桌面自动整理失败，错误: %s",
+            result.errorMessage.c_str()
+        );
+    }
+
+    // 更新状态栏
+    updateStatusBar(m_state);
+
+    m_executeArrangeBtn->setEnabled(true);
+    m_executeArrangeBtn->setText(u8"执行桌面自动整理");
+    Logger::getInstance().info("MainWindow: 桌面自动整理执行完成");
 }
 
 void MainWindow::onShowSettings() {
@@ -626,15 +804,28 @@ void MainWindow::triggerOrganizeFromTray() {
 
 void MainWindow::triggerLayoutFromTray() {
     Logger::getInstance().info("MainWindow: 从托盘菜单触发桌面布局分析");
-    
+
     // 显示主窗口
     if (!isVisible()) {
         showNormal();
         activateWindow();
         raise();
     }
-    
+
     onGenerateLayoutPlan();
+}
+
+void MainWindow::triggerExecuteArrangeFromTray() {
+    Logger::getInstance().info("MainWindow: 从托盘菜单触发桌面自动整理执行");
+
+    // 显示主窗口
+    if (!isVisible()) {
+        showNormal();
+        activateWindow();
+        raise();
+    }
+
+    onExecuteDesktopArrange();
 }
 
 void MainWindow::showSettingsDialog() {

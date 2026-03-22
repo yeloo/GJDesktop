@@ -129,37 +129,44 @@ LayoutPlanResult DesktopAutoArrangeService::generateLayoutPlan() {
 }
 
 AutoArrangeResult DesktopAutoArrangeService::arrangeDesktop() {
-    Logger::getInstance().info("DesktopAutoArrangeService: 开始自动整理");
-    
+    Logger::getInstance().info("DesktopAutoArrangeService: 开始执行桌面自动整理");
+
     AutoArrangeResult result;
-    
+
     // 1. 读取桌面图标
-    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 1/5: 读取桌面图标");
+    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 1/6: 读取桌面图标");
     DesktopIconSnapshot snapshot = m_iconAccessor->readDesktopIcons();
-    
+
     if (!snapshot.success()) {
         result.errorMessage = "读取桌面图标失败: " + snapshot.errorMessage;
         Logger::getInstance().error("DesktopAutoArrangeService: %s", result.errorMessage.c_str());
         return result;
     }
-    
+
     result.totalIcons = snapshot.icons.size();
     Logger::getInstance().info(
         "DesktopAutoArrangeService: 成功读取 %zu 个桌面图标",
         result.totalIcons
     );
-    
+
+    // 安全检查：如果没有图标，直接返回
+    if (result.totalIcons == 0) {
+        result.errorMessage = "桌面上没有可整理的图标";
+        Logger::getInstance().warning("DesktopAutoArrangeService: %s", result.errorMessage.c_str());
+        return result;
+    }
+
     // 2. 构建身份信息
-    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 2/5: 构建身份信息");
+    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 2/6: 构建身份信息");
     std::vector<ArrangeableDesktopIcon> arrangeableIcons;
-    
+
     for (const auto& icon : snapshot.icons) {
         ArrangeableDesktopIcon arrangeableIcon;
         arrangeableIcon.identity = buildIconIdentity(icon);
         arrangeableIcon.currentPosition = icon.position;
         arrangeableIcons.push_back(arrangeableIcon);
     }
-    
+
     // 统计身份构建情况
     size_t validIdentityCount = 0;
     for (const auto& icon : arrangeableIcons) {
@@ -173,21 +180,28 @@ AutoArrangeResult DesktopAutoArrangeService::arrangeDesktop() {
         validIdentityCount,
         arrangeableIcons.size()
     );
-    
+
+    // 安全检查：如果没有有效身份，阻止执行
+    if (validIdentityCount == 0) {
+        result.errorMessage = "所有图标都缺少有效身份标识（parsingName），无法可靠执行整理";
+        Logger::getInstance().error("DesktopAutoArrangeService: %s", result.errorMessage.c_str());
+        return result;
+    }
+
     // 3. 分类图标
-    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 3/5: 分类图标");
-    
+    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 3/6: 分类图标");
+
     for (auto& icon : arrangeableIcons) {
         IconCategory category = m_ruleEngine->classifyIcon(icon.identity);
         icon.category = DesktopArrangeRuleEngine::getCategoryName(category);
     }
-    
+
     result.categorizedIcons = arrangeableIcons.size();
     Logger::getInstance().info(
         "DesktopAutoArrangeService: 分类完成，%zu 个图标",
         result.categorizedIcons
     );
-    
+
     // 打印分类统计
     std::map<std::string, int> categoryCounts;
     for (const auto& icon : arrangeableIcons) {
@@ -200,51 +214,80 @@ AutoArrangeResult DesktopAutoArrangeService::arrangeDesktop() {
             pair.second
         );
     }
-    
+
     // 4. 计算目标坐标
-    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 4/5: 计算目标坐标");
+    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 4/6: 计算目标坐标");
     std::vector<DesktopLayoutTarget> targets = m_layoutPlanner->planLayout(arrangeableIcons);
-    
+
     if (targets.empty()) {
         result.errorMessage = "布局规划结果为空";
         Logger::getInstance().error("DesktopAutoArrangeService: %s", result.errorMessage.c_str());
         return result;
     }
-    
+
+    result.plannedIcons = targets.size();
     Logger::getInstance().info(
         "DesktopAutoArrangeService: 布局规划完成，%zu 个目标",
         targets.size()
     );
-    
+
     // 打印布局规划（前 10 个）
     std::string layoutPlan = DesktopLayoutPlanner::printLayoutPlan(targets);
     Logger::getInstance().debug("DesktopAutoArrangeService: %s", layoutPlan.c_str());
-    
-    // 5. 写回位置
-    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 5/5: 写回位置");
-    
-    // 逐个移动图标
+
+    // 5. 创建执行前位置快照
+    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 5/6: 创建执行前位置快照");
+    result.preExecutionSnapshot = std::make_unique<DesktopLayoutSnapshot>(
+        createPositionSnapshot(arrangeableIcons)
+    );
+
+    if (!result.preExecutionSnapshot->isEmpty()) {
+        Logger::getInstance().info(
+            "DesktopAutoArrangeService: 位置快照创建完成 - %zu 个图标",
+            result.preExecutionSnapshot->totalCount
+        );
+    }
+
+    // 6. 真实写回位置
+    Logger::getInstance().info("DesktopAutoArrangeService: 步骤 6/6: 真实写回位置（将修改桌面图标位置）");
+
+    // 逐个移动图标，记录详细失败信息
     for (const auto& target : targets) {
         std::string errorMessage;
-        if (m_iconWriter->moveSingleIcon(target.identity, target.targetPosition, errorMessage)) {
+        bool success = m_iconWriter->moveSingleIcon(target.identity, target.targetPosition, errorMessage);
+
+        if (success) {
             result.movedIcons++;
         } else {
             result.failedIcons++;
+
+            // 记录失败详情
+            char posStr[32];
+            snprintf(posStr, sizeof(posStr), "(%d, %d)", target.targetPosition.x, target.targetPosition.y);
+
+            result.failures.push_back(ArrangeFailureDetail(
+                target.identity.displayName,
+                target.identity.parsingName,
+                posStr,
+                errorMessage
+            ));
+
             Logger::getInstance().error(
-                "DesktopAutoArrangeService: 移动图标 '%s' 失败: %s",
+                "DesktopAutoArrangeService: 移动图标 '%s' (parsingName: '%s') 失败: %s",
                 target.identity.displayName.c_str(),
+                target.identity.parsingName.c_str(),
                 errorMessage.c_str()
             );
         }
     }
-    
+
     Logger::getInstance().info(
         "DesktopAutoArrangeService: 移动完成 - 成功: %zu, 失败: %zu",
         result.movedIcons,
         result.failedIcons
     );
-    
-    // 6. 返回结果
+
+    // 7. 返回结果
     if (result.failedIcons > 0) {
         result.errorMessage = "部分图标移动失败";
         Logger::getInstance().warning(
@@ -255,7 +298,7 @@ AutoArrangeResult DesktopAutoArrangeService::arrangeDesktop() {
     } else {
         Logger::getInstance().info("DesktopAutoArrangeService: 自动整理全部成功");
     }
-    
+
     return result;
 }
 
@@ -302,6 +345,42 @@ DesktopIconIdentity DesktopAutoArrangeService::buildIconIdentity(const DesktopIc
     }
 
     return identity;
+}
+
+DesktopLayoutSnapshot DesktopAutoArrangeService::createPositionSnapshot(
+    const std::vector<ArrangeableDesktopIcon>& icons
+) {
+    Logger::getInstance().info("DesktopAutoArrangeService: 开始创建桌面图标位置快照");
+
+    DesktopLayoutSnapshot snapshot;
+    snapshot.positions.reserve(icons.size());
+
+    // 获取当前时间戳
+    time_t now = time(nullptr);
+    char timeBuffer[64];
+    strftime(timeBuffer, sizeof(timeBuffer), "%Y-%m-%d %H:%M:%S", localtime(&now));
+    snapshot.timestamp = timeBuffer;
+
+    // 保存每个图标的位置
+    for (const auto& icon : icons) {
+        if (!icon.identity.parsingName.empty()) {
+            snapshot.positions.push_back(DesktopIconPositionSnapshot(
+                icon.identity.displayName,
+                icon.identity.parsingName,
+                icon.currentPosition,
+                icon.category
+            ));
+        }
+    }
+
+    snapshot.totalCount = snapshot.positions.size();
+
+    Logger::getInstance().info(
+        "DesktopAutoArrangeService: 位置快照创建完成 - 保存 %zu 个图标位置",
+        snapshot.totalCount
+    );
+
+    return snapshot;
 }
 
 } // namespace ccdesk::core

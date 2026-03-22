@@ -18,6 +18,7 @@ TrayManager::TrayManager(QMainWindow* mainWindow, QObject* parent)
     , m_showAction(nullptr)
     , m_organizeAction(nullptr)
     , m_layoutPlanAction(nullptr)  // 【接口层变更】改名：m_arrangeAction → m_layoutPlanAction
+    , m_executeArrangeAction(nullptr)  // 执行桌面自动整理菜单项
     , m_settingsAction(nullptr)
     , m_exitAction(nullptr)
 {
@@ -93,6 +94,11 @@ void TrayManager::createTrayMenu() {
     m_layoutPlanAction = m_trayMenu->addAction("生成桌面布局规划");
     connect(m_layoutPlanAction, &QAction::triggered, this, &TrayManager::onGenerateLayoutPlan);
 
+    // 执行桌面自动整理（新增）
+    m_executeArrangeAction = m_trayMenu->addAction(u8"执行桌面自动整理");
+    m_executeArrangeAction->setStyleSheet("QAction { color: #e74c3c; font-weight: bold; }");
+    connect(m_executeArrangeAction, &QAction::triggered, this, &TrayManager::onExecuteArrange);
+
     m_trayMenu->addSeparator();
 
     // 设置
@@ -149,6 +155,16 @@ void TrayManager::onGenerateLayoutPlan() {
     if (m_mainWindow) {
         // 发射信号给主窗口生成布局规划
         QMetaObject::invokeMethod(m_mainWindow, "triggerLayoutFromTray", Qt::QueuedConnection);
+    }
+}
+
+// 【新增】onExecuteArrange：执行桌面自动整理（真实写回）
+void TrayManager::onExecuteArrange() {
+    Logger::getInstance().info("TrayManager: 点击了'执行桌面自动整理'菜单项");
+
+    if (m_mainWindow) {
+        // 发射信号给主窗口执行整理
+        QMetaObject::invokeMethod(m_mainWindow, "triggerExecuteArrangeFromTray", Qt::QueuedConnection);
     }
 }
 

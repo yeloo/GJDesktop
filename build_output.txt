@@ -1,0 +1,19 @@
+
+===============================================
+  CCDesk Compilation Script (Batch Version)
+  Qt Desktop Organizer MVF v1.0
+===============================================
+
+[INFO] Qt Path: D:\Qt\6.10.2\msvc2022_64
+
+[*] Preparing build environment...
+[*] Build directory exists
+
+[*] Running CMake configuration...
+    Command: cmake .. -G "Visual Studio 17 2022" -DCMAKE_PREFIX_PATH=D:\Qt\6.10.2\msvc2022_64
+
+'cmake' 不是内部或外部命令，也不是可运行的程序
+或批处理文件。
+
+[ERROR] CMake configuration failed
+请按任意键继续. . . 
