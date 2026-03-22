@@ -1,4 +1,5 @@
 #include "snapshot_manager.h"
+#include "desktop_snapshot_types.h"
 #include "logger.h"
 #include <sstream>
 #include <filesystem>

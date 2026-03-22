@@ -38,6 +38,7 @@ set(SOURCES
     src/core/desktop_arrange_rule_engine.cpp
     src/core/desktop_layout_planner.h
     src/core/desktop_layout_planner.cpp
+    src/core/desktop_snapshot_types.h
     src/core/desktop_auto_arrange_service.h
     src/core/desktop_auto_arrange_service.cpp
     src/core/snapshot_manager.h

@@ -5,7 +5,7 @@
 #include <vector>
 #include <memory>
 #include <fstream>
-#include "desktop_auto_arrange_service.h"
+#include "desktop_snapshot_types.h"
 
 namespace ccdesk::core {
 
