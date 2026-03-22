@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <windows.h>
 
 namespace ccdesk::core {
 
@@ -94,12 +95,12 @@ private:
     };
     
     /**
-     * 判断是否为文件夹
-     * 
-     * @param parsingName Shell parsing name
+     * 判断是否为文件夹（P1-3: 优先 Shell 属性，再回退启发式）
+     *
+     * @param identity 图标身份（含 isFileSystemItem + parsingName）
      * @return true 如果是文件夹
      */
-    bool isFolder(const std::string& parsingName) const;
+    bool isFolder(const DesktopIconIdentity& identity) const;
     
     /**
      * 判断是否为快捷方式

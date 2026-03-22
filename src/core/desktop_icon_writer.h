@@ -96,8 +96,7 @@ public:
      *
      * 当前实现：
      *   - 逐个调用 moveSingleIcon()
-     *   - 每个 moveSingleIcon 都会返回 false（明确声明不可用）
-     *   - 不会产生任何实际移动效果
+     *   - moveSingleIcon 走 COM 路线，会如实返回成功/失败
      */
     bool moveIcons(
         const std::vector<DesktopLayoutTarget>& targets,

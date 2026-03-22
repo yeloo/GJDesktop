@@ -38,10 +38,13 @@ public:
     DesktopAutoArrangeService* getAutoArrangeService() const;
     ui::MainWindow* getMainWindow() const;
 
-    // 【接口层变更】执行桌面布局规划（规划/预演，不执行真实写回）
+    // 【预览模式】生成桌面布局规划（读取+分类+规划，不移动任何图标）
+    // 调用来源：托盘菜单"生成桌面布局规划"、启动时自动规划
     void generateLayoutPlan();
 
-    // 【向后兼容】执行自动整理桌面（内部调用 generateLayoutPlan）
+    // 【执行模式】执行真实桌面图标整理（读取+分类+规划+写回）
+    // 调用来源：将来的"立即整理"按钮或高级设置触发
+    // 注意：写回能力依赖 IFolderView COM 接口，成功率取决于 Explorer 版本
     void arrangeDesktop();
 
     // 运行应用

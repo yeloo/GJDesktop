@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <QByteArray>
 #include "desktop_layout_manager.h"
 
 namespace ccdesk::core {
@@ -110,7 +111,7 @@ private:
     
     // 内部方法
     void createDefaultConfig();
-    bool parseConfig(const std::string& content);
+    bool parseConfig(const QByteArray& data);
     
     // 转换方法
     static std::string organizeModeToString(OrganizeMode mode);

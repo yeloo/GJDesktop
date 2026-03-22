@@ -27,8 +27,9 @@ int main(int argc, char* argv[]) {
     auto& logger = ccdesk::core::Logger::getInstance();
     QString logPath = appDataDir + "/logs/ccdesk.log";
     dir.mkpath(appDataDir + "/logs");  // 确保 logs 目录存在
-    logger.setLogPath(logPath.toStdString());
-    logger.info("应用程序启动，日志文件: " + logPath.toStdString());
+    // P1-2: 统一使用 toUtf8().constData() 避免 Windows 下 GBK/UTF-8 混用
+    logger.setLogPath(logPath.toUtf8().constData());
+    logger.info(std::string("应用程序启动，日志文件: ") + logPath.toUtf8().constData());
     
     // 初始化AppManager
     auto& appMgr = ccdesk::core::AppManager::getInstance();

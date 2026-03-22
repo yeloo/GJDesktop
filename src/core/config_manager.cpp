@@ -1,11 +1,15 @@
 #include "config_manager.h"
 #include "logger.h"
 #include <fstream>
-#include <sstream>
 #include <filesystem>
 #include <iostream>
 #include <QStandardPaths>
 #include <QString>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonValue>
 
 namespace fs = std::filesystem;
 
@@ -13,29 +17,22 @@ namespace ccdesk::core {
 
 ConfigManager::ConfigManager()
     : m_startupEnabled(false)
-    , m_organizeMode(MODE_DESKTOP_ORGANIZE)  // 默认使用桌面收纳盒模式
-    , m_autoArrangeEnabled(false)              // 默认禁用自动整理
-    , m_autoArrangeOnStartup(false)            // 默认禁用启动时整理
+    , m_organizeMode(MODE_DESKTOP_ORGANIZE)
+    , m_autoArrangeEnabled(false)
+    , m_autoArrangeOnStartup(false)
 {
-    // 辅助函数：将 QString 安全转换为 UTF-8 std::string
-    // Windows: QString (UTF-16) -> toUtf8() -> std::string (UTF-8)
-    // Linux/macOS: QString (UTF-8) -> toUtf8() -> std::string (UTF-8)
-    auto qstringToUtf8String = [](const QString& qstr) -> std::string {
-        return qstr.toUtf8().toStdString();
-    };
-
-    // 使用 Qt 标准路径获取用户数据目录，确保配置文件位置可预测
+    // Windows: QString (UTF-16) -> toStdWString() -> fs::path
     QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    
-    // 安全转换：使用 toUtf8() 而不是 toStdString()
-    fs::path configDir = fs::path(appDataDir.toStdWString());  // Windows 下使用 UTF-16
+
+    fs::path configDir = fs::path(appDataDir.toStdWString());
     if (!fs::exists(configDir)) {
         fs::create_directories(configDir);
     }
-    
-    // 安全转换：从 fs::path 转为 UTF-8 std::string
+
+    // P1-2: 统一使用 UTF-8 路径字符串
 #ifdef _WIN32
-    m_configPath = QString::fromStdWString((configDir / "ccdesk_config.json").wstring()).toUtf8().toStdString();
+    m_configPath = QString::fromStdWString((configDir / "ccdesk_config.json").wstring())
+                       .toUtf8().constData();
 #else
     m_configPath = (configDir / "ccdesk_config.json").string();
 #endif
@@ -65,421 +62,190 @@ ConfigManager::OrganizeMode ConfigManager::organizeModeFromString(const std::str
 
 bool ConfigManager::load() {
     Logger::getInstance().info("ConfigManager: Loading configuration from " + m_configPath);
-    
+
     if (!fs::exists(m_configPath)) {
         Logger::getInstance().info("ConfigManager: Config file not found, creating default");
         createDefaultConfig();
         return save();
     }
-    
-    try {
-        std::ifstream file(m_configPath);
-        if (!file.is_open()) {
-            Logger::getInstance().error("ConfigManager: Failed to open config file");
-            return false;
-        }
-        
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        file.close();
-        
-        return parseConfig(buffer.str());
-    } catch (const std::exception& e) {
-        Logger::getInstance().error("ConfigManager: Exception loading config: " + std::string(e.what()));
+
+    // P1-1: 使用 QFile 读取，避免 Windows 路径编码问题
+    QString qPath = QString::fromUtf8(m_configPath.c_str());
+    QFile file(qPath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        Logger::getInstance().error("ConfigManager: Failed to open config file");
         return false;
     }
+
+    QByteArray data = file.readAll();
+    file.close();
+
+    return parseConfig(data);
 }
 
 bool ConfigManager::save() {
     Logger::getInstance().info("ConfigManager: Saving configuration to " + m_configPath);
-    
-    try {
-        // 确保目录存在
-        fs::path dirPath = fs::path(m_configPath).parent_path();
-        if (!fs::exists(dirPath)) {
-            fs::create_directories(dirPath);
-        }
-        
-        std::ofstream file(m_configPath);
-        if (!file.is_open()) {
-            Logger::getInstance().error("ConfigManager: Failed to open config file for writing");
-            return false;
-        }
-        
-        // 简单的JSON格式
-        file << "{\n";
-        file << "  \"version\": \"2.0\",\n";
-        file << "  \"startup_enabled\": " << (m_startupEnabled ? "true" : "false") << ",\n";
-        file << "  \"organize_mode\": \"" << organizeModeToString(m_organizeMode) << "\",\n";
-        file << "  \"auto_arrange_enabled\": " << (m_autoArrangeEnabled ? "true" : "false") << ",\n";
-        file << "  \"auto_arrange_on_startup\": " << (m_autoArrangeOnStartup ? "true" : "false") << ",\n";
-        
-        file << "  \"partitions\": [\n";
-        for (size_t i = 0; i < m_partitions.size(); ++i) {
-            const auto& p = m_partitions[i];
-            file << "    {\n";
-            file << "      \"id\": \"" << p.id << "\",\n";
-            file << "      \"name\": \"" << p.name << "\",\n";
-            file << "      \"targetPath\": \"" << p.targetPath << "\",\n";
-            file << "      \"type\": \"" << (p.type == PartitionConfig::TYPE_DESKTOP_ZONE ? "desktop_zone" : "legacy_folder") << "\",\n";
-            
-            if (p.type == PartitionConfig::TYPE_DESKTOP_ZONE) {
-                file << "      \"category\": " << static_cast<int>(p.category) << ",\n";
-                file << "      \"x\": " << p.x << ",\n";
-                file << "      \"y\": " << p.y << ",\n";
-                file << "      \"width\": " << p.width << ",\n";
-                file << "      \"height\": " << p.height << ",\n";
-                file << "      \"backgroundColor\": \"" << p.backgroundColor << "\"\n";
-            } else {
-                file << "      \"category\": 0,\n";
-                file << "      \"x\": 0,\n";
-                file << "      \"y\": 0,\n";
-                file << "      \"width\": 0,\n";
-                file << "      \"height\": 0,\n";
-                file << "      \"backgroundColor\": \"\"\n";
-            }
-            
-            file << "    }";
-            if (i < m_partitions.size() - 1) file << ",";
-            file << "\n";
-        }
-        file << "  ],\n";
-        
-        file << "  \"rules\": [\n";
-        for (size_t i = 0; i < m_rules.size(); ++i) {
-            const auto& r = m_rules[i];
-            file << "    {\n";
-            file << "      \"id\": \"" << r.id << "\",\n";
-            file << "      \"name\": \"" << r.name << "\",\n";
-            file << "      \"extensions\": \"" << r.extensions << "\",\n";
-            file << "      \"targetPath\": \"" << r.targetPath << "\",\n";
-            file << "      \"enabled\": " << (r.enabled ? "true" : "false") << ",\n";
-            file << "      \"type\": \"" << (r.type == OrganizeRule::TYPE_CATEGORY_CLASSIFY ? "category_classify" : "legacy_move") << "\",\n";
-            file << "      \"category\": " << static_cast<int>(r.category) << "\n";
-            file << "    }";
-            if (i < m_rules.size() - 1) file << ",";
-            file << "\n";
-        }
-        file << "  ]\n";
-        file << "}\n";
-        
-        file.close();
-        Logger::getInstance().info("ConfigManager: Configuration saved successfully");
-        return true;
-    } catch (const std::exception& e) {
-        Logger::getInstance().error("ConfigManager: Exception saving config: " + std::string(e.what()));
+
+    // 确保目录存在
+    fs::path dirPath = fs::path(m_configPath).parent_path();
+    if (!fs::exists(dirPath)) {
+        fs::create_directories(dirPath);
+    }
+
+    // P1-1: 用 QJsonDocument 序列化
+    QJsonObject root;
+    root["version"] = "2.0";
+    root["startup_enabled"] = m_startupEnabled;
+    root["organize_mode"] = QString::fromStdString(organizeModeToString(m_organizeMode));
+    root["auto_arrange_enabled"] = m_autoArrangeEnabled;
+    root["auto_arrange_on_startup"] = m_autoArrangeOnStartup;
+
+    // 分区数组
+    QJsonArray partitionsArray;
+    for (const auto& p : m_partitions) {
+        QJsonObject obj;
+        obj["id"]              = QString::fromStdString(p.id);
+        obj["name"]            = QString::fromStdString(p.name);
+        obj["targetPath"]      = QString::fromStdString(p.targetPath);
+        obj["type"]            = (p.type == PartitionConfig::TYPE_DESKTOP_ZONE)
+                                     ? "desktop_zone" : "legacy_folder";
+        obj["category"]        = static_cast<int>(p.category);
+        obj["x"]               = p.x;
+        obj["y"]               = p.y;
+        obj["width"]           = p.width;
+        obj["height"]          = p.height;
+        obj["backgroundColor"] = QString::fromStdString(p.backgroundColor);
+        partitionsArray.append(obj);
+    }
+    root["partitions"] = partitionsArray;
+
+    // 规则数组
+    QJsonArray rulesArray;
+    for (const auto& r : m_rules) {
+        QJsonObject obj;
+        obj["id"]         = QString::fromStdString(r.id);
+        obj["name"]       = QString::fromStdString(r.name);
+        obj["extensions"] = QString::fromStdString(r.extensions);
+        obj["targetPath"] = QString::fromStdString(r.targetPath);
+        obj["enabled"]    = r.enabled;
+        obj["type"]       = (r.type == OrganizeRule::TYPE_CATEGORY_CLASSIFY)
+                                ? "category_classify" : "legacy_move";
+        obj["category"]   = static_cast<int>(r.category);
+        rulesArray.append(obj);
+    }
+    root["rules"] = rulesArray;
+
+    QJsonDocument doc(root);
+    QByteArray jsonData = doc.toJson(QJsonDocument::Indented);
+
+    QString qPath = QString::fromUtf8(m_configPath.c_str());
+    QFile file(qPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        Logger::getInstance().error("ConfigManager: Failed to open config file for writing");
         return false;
     }
+    file.write(jsonData);
+    file.close();
+
+    Logger::getInstance().info("ConfigManager: Configuration saved successfully");
+    return true;
 }
 
-bool ConfigManager::parseConfig(const std::string& content) {
-    // 简单的JSON解析（不使用外部库）
-    Logger::getInstance().info("ConfigManager: Parsing configuration");
-    
-    // 清空现有数据
+bool ConfigManager::parseConfig(const QByteArray& data) {
+    Logger::getInstance().info("ConfigManager: Parsing configuration (QJsonDocument)");
+
     m_partitions.clear();
     m_rules.clear();
-    
-    // 检查版本号
-    size_t versionPos = content.find("\"version\"");
-    std::string version = "1.0";
-    if (versionPos != std::string::npos) {
-        size_t colonPos = content.find(":", versionPos);
-        size_t quoteStart = content.find("\"", colonPos);
-        size_t quoteEnd = content.find("\"", quoteStart + 1);
-        if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
-            version = content.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-        }
-    }
-    Logger::getInstance().info("ConfigManager: Config version: " + version);
-    
-    // 检查startup_enabled
-    size_t startupPos = content.find("\"startup_enabled\"");
-    if (startupPos != std::string::npos) {
-        size_t colonPos = content.find(":", startupPos);
-        if (colonPos != std::string::npos) {
-            size_t truePos = content.find("true", colonPos);
-            m_startupEnabled = (truePos != std::string::npos && truePos < colonPos + 20);
-        }
-    }
-    
-    // 检查organize_mode（新版配置）
-    size_t modePos = content.find("\"organize_mode\"");
-    if (modePos != std::string::npos) {
-        size_t colonPos = content.find(":", modePos);
-        size_t quoteStart = content.find("\"", colonPos);
-        size_t quoteEnd = content.find("\"", quoteStart + 1);
-        if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
-            std::string modeStr = content.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-            m_organizeMode = organizeModeFromString(modeStr);
-        }
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+
+    if (parseError.error != QJsonParseError::NoError) {
+        Logger::getInstance().error("ConfigManager: JSON parse error: " +
+                                    parseError.errorString().toUtf8().toStdString());
+        createDefaultConfig();
+        return false;
     }
 
-    // 检查auto_arrange_enabled
-    size_t autoArrangePos = content.find("\"auto_arrange_enabled\"");
-    if (autoArrangePos != std::string::npos) {
-        size_t colonPos = content.find(":", autoArrangePos);
-        if (colonPos != std::string::npos) {
-            size_t truePos = content.find("true", colonPos);
-            m_autoArrangeEnabled = (truePos != std::string::npos && truePos < colonPos + 20);
-        }
+    if (!doc.isObject()) {
+        Logger::getInstance().error("ConfigManager: Root is not a JSON object");
+        createDefaultConfig();
+        return false;
     }
 
-    // 检查auto_arrange_on_startup
-    size_t autoArrangeStartupPos = content.find("\"auto_arrange_on_startup\"");
-    if (autoArrangeStartupPos != std::string::npos) {
-        size_t colonPos = content.find(":", autoArrangeStartupPos);
-        if (colonPos != std::string::npos) {
-            size_t truePos = content.find("true", colonPos);
-            m_autoArrangeOnStartup = (truePos != std::string::npos && truePos < colonPos + 25);
-        }
+    QJsonObject root = doc.object();
+
+    // version
+    QString version = root.value("version").toString("1.0");
+    Logger::getInstance().info("ConfigManager: Config version: " + version.toUtf8().toStdString());
+
+    // startup_enabled
+    m_startupEnabled = root.value("startup_enabled").toBool(false);
+
+    // organize_mode
+    std::string modeStr = root.value("organize_mode").toString("auto").toUtf8().constData();
+    m_organizeMode = organizeModeFromString(modeStr);
+
+    // auto_arrange_enabled
+    m_autoArrangeEnabled = root.value("auto_arrange_enabled").toBool(false);
+
+    // auto_arrange_on_startup
+    m_autoArrangeOnStartup = root.value("auto_arrange_on_startup").toBool(false);
+
+    // partitions
+    QJsonArray partitionsArray = root.value("partitions").toArray();
+    for (const QJsonValue& val : partitionsArray) {
+        if (!val.isObject()) continue;
+        QJsonObject obj = val.toObject();
+
+        PartitionConfig pc;
+        pc.id              = obj.value("id").toString().toUtf8().constData();
+        pc.name            = obj.value("name").toString().toUtf8().constData();
+        pc.targetPath      = obj.value("targetPath").toString().toUtf8().constData();
+        pc.backgroundColor = obj.value("backgroundColor").toString().toUtf8().constData();
+        pc.x               = obj.value("x").toInt(0);
+        pc.y               = obj.value("y").toInt(0);
+        pc.width           = obj.value("width").toInt(0);
+        pc.height          = obj.value("height").toInt(0);
+        pc.category        = static_cast<FileCategory>(obj.value("category").toInt(0));
+
+        std::string typeStr = obj.value("type").toString("legacy_folder").toUtf8().constData();
+        pc.type = (typeStr == "desktop_zone")
+                      ? PartitionConfig::TYPE_DESKTOP_ZONE
+                      : PartitionConfig::TYPE_LEGACY_FOLDER;
+
+        m_partitions.push_back(pc);
     }
-    
-    // 解析分区数组
-    size_t partitionsStart = content.find("\"partitions\"");
-    if (partitionsStart != std::string::npos) {
-        size_t arrayStart = content.find("[", partitionsStart);
-        size_t arrayEnd = content.find("]", arrayStart);
-        if (arrayStart != std::string::npos && arrayEnd != std::string::npos) {
-            std::string partitionsStr = content.substr(arrayStart + 1, arrayEnd - arrayStart - 1);
-            
-            // 简单的对象提取：逐个 { } 对
-            size_t objStart = 0;
-            while ((objStart = partitionsStr.find("{", objStart)) != std::string::npos) {
-                size_t objEnd = partitionsStr.find("}", objStart);
-                if (objEnd == std::string::npos) break;
-                
-                std::string objStr = partitionsStr.substr(objStart, objEnd - objStart + 1);
-                
-                // 提取分区配置
-                PartitionConfig pc;
-                
-                // 提取 id
-                size_t idPos = objStr.find("\"id\"");
-                if (idPos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", idPos);
-                    size_t quoteStart = objStr.find("\"", colonPos);
-                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
-                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
-                        pc.id = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-                    }
-                }
-                
-                // 提取 name
-                size_t namePos = objStr.find("\"name\"");
-                if (namePos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", namePos);
-                    size_t quoteStart = objStr.find("\"", colonPos);
-                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
-                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
-                        pc.name = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-                    }
-                }
-                
-                // 提取 targetPath
-                size_t pathPos = objStr.find("\"targetPath\"");
-                if (pathPos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", pathPos);
-                    size_t quoteStart = objStr.find("\"", colonPos);
-                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
-                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
-                        pc.targetPath = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-                    }
-                }
-                
-                // 提取 type（新版）
-                size_t typePos = objStr.find("\"type\"");
-                if (typePos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", typePos);
-                    size_t quoteStart = objStr.find("\"", colonPos);
-                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
-                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
-                        std::string typeStr = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-                        pc.type = (typeStr == "desktop_zone") ? PartitionConfig::TYPE_DESKTOP_ZONE 
-                                                              : PartitionConfig::TYPE_LEGACY_FOLDER;
-                    }
-                }
-                
-                // 提取 category（新版）
-                size_t categoryPos = objStr.find("\"category\"");
-                if (categoryPos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", categoryPos);
-                    size_t valueStart = objStr.find_first_of("0123456789", colonPos);
-                    size_t valueEnd = objStr.find_first_not_of("0123456789", valueStart);
-                    if (valueStart != std::string::npos) {
-                        std::string catStr = objStr.substr(valueStart, valueEnd - valueStart);
-                        pc.category = static_cast<FileCategory>(std::stoi(catStr));
-                    }
-                }
-                
-                // 提取位置和大小（新版）
-                size_t xPos = objStr.find("\"x\"");
-                if (xPos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", xPos);
-                    size_t valueStart = objStr.find_first_of("0123456789-", colonPos);
-                    size_t valueEnd = objStr.find_first_not_of("0123456789-", valueStart);
-                    if (valueStart != std::string::npos) {
-                        pc.x = std::stoi(objStr.substr(valueStart, valueEnd - valueStart));
-                    }
-                }
-                
-                size_t yPos = objStr.find("\"y\"");
-                if (yPos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", yPos);
-                    size_t valueStart = objStr.find_first_of("0123456789-", colonPos);
-                    size_t valueEnd = objStr.find_first_not_of("0123456789-", valueStart);
-                    if (valueStart != std::string::npos) {
-                        pc.y = std::stoi(objStr.substr(valueStart, valueEnd - valueStart));
-                    }
-                }
-                
-                size_t widthPos = objStr.find("\"width\"");
-                if (widthPos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", widthPos);
-                    size_t valueStart = objStr.find_first_of("0123456789", colonPos);
-                    size_t valueEnd = objStr.find_first_not_of("0123456789", valueStart);
-                    if (valueStart != std::string::npos) {
-                        pc.width = std::stoi(objStr.substr(valueStart, valueEnd - valueStart));
-                    }
-                }
-                
-                size_t heightPos = objStr.find("\"height\"");
-                if (heightPos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", heightPos);
-                    size_t valueStart = objStr.find_first_of("0123456789", colonPos);
-                    size_t valueEnd = objStr.find_first_not_of("0123456789", valueStart);
-                    if (valueStart != std::string::npos) {
-                        pc.height = std::stoi(objStr.substr(valueStart, valueEnd - valueStart));
-                    }
-                }
-                
-                // 提取背景颜色（新版）
-                size_t colorPos = objStr.find("\"backgroundColor\"");
-                if (colorPos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", colorPos);
-                    size_t quoteStart = objStr.find("\"", colonPos);
-                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
-                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
-                        pc.backgroundColor = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-                    }
-                }
-                
-                m_partitions.push_back(pc);
-                objStart = objEnd + 1;
-            }
-        }
+
+    // rules
+    QJsonArray rulesArray = root.value("rules").toArray();
+    for (const QJsonValue& val : rulesArray) {
+        if (!val.isObject()) continue;
+        QJsonObject obj = val.toObject();
+
+        OrganizeRule rule;
+        rule.id         = obj.value("id").toString().toUtf8().constData();
+        rule.name       = obj.value("name").toString().toUtf8().constData();
+        rule.extensions = obj.value("extensions").toString().toUtf8().constData();
+        rule.targetPath = obj.value("targetPath").toString().toUtf8().constData();
+        rule.enabled    = obj.value("enabled").toBool(true);
+        rule.category   = static_cast<FileCategory>(obj.value("category").toInt(0));
+
+        std::string typeStr = obj.value("type").toString("legacy_move").toUtf8().constData();
+        rule.type = (typeStr == "category_classify")
+                        ? OrganizeRule::TYPE_CATEGORY_CLASSIFY
+                        : OrganizeRule::TYPE_LEGACY_MOVE;
+
+        m_rules.push_back(rule);
     }
-    
-    // 解析规则数组
-    size_t rulesStart = content.find("\"rules\"");
-    if (rulesStart != std::string::npos) {
-        size_t arrayStart = content.find("[", rulesStart);
-        size_t arrayEnd = content.find("]", arrayStart);
-        if (arrayStart != std::string::npos && arrayEnd != std::string::npos) {
-            std::string rulesStr = content.substr(arrayStart + 1, arrayEnd - arrayStart - 1);
-            
-            // 简单的对象提取：逐个 { } 对
-            size_t objStart = 0;
-            while ((objStart = rulesStr.find("{", objStart)) != std::string::npos) {
-                size_t objEnd = rulesStr.find("}", objStart);
-                if (objEnd == std::string::npos) break;
-                
-                std::string objStr = rulesStr.substr(objStart, objEnd - objStart + 1);
-                
-                // 提取规则配置
-                OrganizeRule rule;
-                
-                // 提取 id
-                size_t idPos = objStr.find("\"id\"");
-                if (idPos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", idPos);
-                    size_t quoteStart = objStr.find("\"", colonPos);
-                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
-                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
-                        rule.id = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-                    }
-                }
-                
-                // 提取 name
-                size_t namePos = objStr.find("\"name\"");
-                if (namePos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", namePos);
-                    size_t quoteStart = objStr.find("\"", colonPos);
-                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
-                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
-                        rule.name = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-                    }
-                }
-                
-                // 提取 extensions
-                size_t extPos = objStr.find("\"extensions\"");
-                if (extPos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", extPos);
-                    size_t quoteStart = objStr.find("\"", colonPos);
-                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
-                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
-                        rule.extensions = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-                    }
-                }
-                
-                // 提取 targetPath
-                size_t pathPos = objStr.find("\"targetPath\"");
-                if (pathPos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", pathPos);
-                    size_t quoteStart = objStr.find("\"", colonPos);
-                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
-                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
-                        rule.targetPath = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-                    }
-                }
-                
-                // 提取 enabled
-                size_t enabledPos = objStr.find("\"enabled\"");
-                if (enabledPos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", enabledPos);
-                    size_t truePos = objStr.find("true", colonPos);
-                    rule.enabled = (truePos != std::string::npos && truePos < colonPos + 20);
-                }
-                
-                // 提取 type（新版）
-                size_t typePos = objStr.find("\"type\"");
-                if (typePos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", typePos);
-                    size_t quoteStart = objStr.find("\"", colonPos);
-                    size_t quoteEnd = objStr.find("\"", quoteStart + 1);
-                    if (quoteStart != std::string::npos && quoteEnd != std::string::npos) {
-                        std::string typeStr = objStr.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-                        rule.type = (typeStr == "category_classify") ? OrganizeRule::TYPE_CATEGORY_CLASSIFY 
-                                                                     : OrganizeRule::TYPE_LEGACY_MOVE;
-                    }
-                }
-                
-                // 提取 category（新版）
-                size_t categoryPos = objStr.find("\"category\"");
-                if (categoryPos != std::string::npos) {
-                    size_t colonPos = objStr.find(":", categoryPos);
-                    size_t valueStart = objStr.find_first_of("0123456789", colonPos);
-                    size_t valueEnd = objStr.find_first_not_of("0123456789", valueStart);
-                    if (valueStart != std::string::npos) {
-                        std::string catStr = objStr.substr(valueStart, valueEnd - valueStart);
-                        rule.category = static_cast<FileCategory>(std::stoi(catStr));
-                    }
-                }
-                
-                m_rules.push_back(rule);
-                objStart = objEnd + 1;
-            }
-        }
-    }
-    
-    // 如果没有配置，创建默认配置
+
     if (m_partitions.empty() && m_rules.empty()) {
         Logger::getInstance().info("ConfigManager: Empty config, creating default");
         createDefaultConfig();
     }
-    
-    Logger::getInstance().info("ConfigManager: Parsed " + std::to_string(m_partitions.size()) + 
-                              " partitions and " + std::to_string(m_rules.size()) + " rules");
+
+    Logger::getInstance().info("ConfigManager: Parsed " + std::to_string(m_partitions.size()) +
+                               " partitions and " + std::to_string(m_rules.size()) + " rules");
     return true;
 }
 

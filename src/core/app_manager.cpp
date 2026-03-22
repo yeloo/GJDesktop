@@ -266,7 +266,39 @@ void AppManager::restorePartitions() {
 }
 
 //=============================================================================
-// 自动整理桌面
+// 生成桌面布局规划（规划/预演，不执行真实写回）
+//=============================================================================
+
+void AppManager::generateLayoutPlan() {
+    Logger::getInstance().info("==================================================");
+    Logger::getInstance().info("AppManager: generateLayoutPlan() 开始");
+
+    if (!m_autoArrangeService) {
+        Logger::getInstance().error("AppManager: generateLayoutPlan() 失败 - DesktopAutoArrangeService is null");
+        Logger::getInstance().info("==================================================");
+        return;
+    }
+
+    // 调用服务层的布局规划（不执行写回）
+    LayoutPlanResult result = m_autoArrangeService->generateLayoutPlan();
+
+    if (result.success()) {
+        Logger::getInstance().info("AppManager: generateLayoutPlan() 成功完成");
+        Logger::getInstance().info("  Total icons:   " + std::to_string(result.totalIcons));
+        Logger::getInstance().info("  Categorized:   " + std::to_string(result.categorizedIcons));
+        Logger::getInstance().info("  Planned icons: " + std::to_string(result.plannedIcons));
+        Logger::getInstance().info("  注意：当前仅规划，不执行真实桌面图标写回");
+    } else {
+        Logger::getInstance().error("AppManager: generateLayoutPlan() 失败: " + result.errorMessage);
+        Logger::getInstance().error("  Total icons: " + std::to_string(result.totalIcons));
+    }
+
+    Logger::getInstance().info("AppManager: generateLayoutPlan() 结束");
+    Logger::getInstance().info("==================================================");
+}
+
+//=============================================================================
+// 自动整理桌面（真实写回路线）
 //=============================================================================
 
 void AppManager::arrangeDesktop() {
