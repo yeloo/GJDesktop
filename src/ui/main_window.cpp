@@ -626,7 +626,7 @@ void MainWindow::onExecuteDesktopArrange() {
 
     m_executeArrangeBtn->setEnabled(true);
     m_executeArrangeBtn->setText(u8"执行桌面自动整理");
-    Logger::getInstance().info("MainWindow: 桌面自动整理执行完成");
+    // 不再输出无条件的"执行完成"日志，已根据result分级输出info/warning/error
 }
 
 void MainWindow::onRestoreOriginalLayout() {
@@ -774,7 +774,7 @@ void MainWindow::onRestoreOriginalLayout() {
 
     m_restoreLayoutBtn->setEnabled(true);
     m_restoreLayoutBtn->setText(u8"恢复桌面原布局");
-    Logger::getInstance().info("MainWindow: 桌面原布局恢复执行完成");
+    // 不再输出无条件的"执行完成"日志，已根据result分级输出info/warning/error
 }
 
 void MainWindow::onShowSettings() {

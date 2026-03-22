@@ -102,6 +102,39 @@ bool SnapshotManager::loadLastSnapshot(DesktopLayoutSnapshot& snapshot) {
         return false;
     }
 
+    // 快照数据自检：验证parsingName完整性
+    size_t corruptedCount = 0;
+    for (const auto& pos : snapshot.positions) {
+        // 检查parsingName是否为空
+        if (pos.parsingName.empty()) {
+            Logger::getInstance().error(
+                "SnapshotManager: 快照损坏 - parsingName为空，displayName: '%s'",
+                pos.displayName.c_str()
+            );
+            corruptedCount++;
+            continue;
+        }
+
+        // 检查是否首字符丢失（形如 ":\Users\..."）
+        // 正常的Windows路径应该以盘符字母开头（如 "C:\"），或UNC路径以"\\"开头
+        if (pos.parsingName.length() >= 2 && pos.parsingName[0] == ':' && pos.parsingName[1] == '\\') {
+            Logger::getInstance().error(
+                "SnapshotManager: 快照损坏 - parsingName首字符丢失，应为盘符路径但格式为: '%s', displayName: '%s'",
+                pos.parsingName.c_str(),
+                pos.displayName.c_str()
+            );
+            corruptedCount++;
+        }
+    }
+
+    if (corruptedCount > 0) {
+        Logger::getInstance().error(
+            "SnapshotManager: 快照数据损坏，%zu 个图标parsingName异常，请重新执行一次自动整理生成新快照",
+            corruptedCount
+        );
+        return false;
+    }
+
     Logger::getInstance().info(
         "SnapshotManager: 快照加载成功 - %zu 个图标，时间: %s",
         snapshot.totalCount,
@@ -218,31 +251,37 @@ bool SnapshotManager::deserializeSnapshot(const std::string& json, DesktopLayout
     // 实际生产环境应该使用 nlohmann/json 或 QJsonDocument
 
     try {
-        // 解析时间戳
-        size_t timestampPos = json.find("\"timestamp\": \"");
+        // 解析时间戳 - 使用pattern.length()避免硬编码偏移
+        const std::string timestampPattern = "\"timestamp\": \"";
+        size_t timestampPos = json.find(timestampPattern);
         if (timestampPos != std::string::npos) {
-            size_t timestampEnd = json.find("\"", timestampPos + 15);
+            size_t start = timestampPos + timestampPattern.length();
+            size_t timestampEnd = json.find("\"", start);
             if (timestampEnd != std::string::npos) {
-                snapshot.timestamp = json.substr(timestampPos + 15, timestampEnd - (timestampPos + 15));
+                snapshot.timestamp = json.substr(start, timestampEnd - start);
             }
         }
 
         // 解析总数
-        size_t totalCountPos = json.find("\"totalCount\": ");
+        const std::string totalCountPattern = "\"totalCount\": ";
+        size_t totalCountPos = json.find(totalCountPattern);
         if (totalCountPos != std::string::npos) {
-            size_t totalCountEnd = json.find(",", totalCountPos);
+            size_t start = totalCountPos + totalCountPattern.length();
+            size_t totalCountEnd = json.find(",", start);
             if (totalCountEnd != std::string::npos) {
-                std::string countStr = json.substr(totalCountPos + 14, totalCountEnd - (totalCountPos + 14));
+                std::string countStr = json.substr(start, totalCountEnd - start);
                 snapshot.totalCount = std::stoul(countStr);
             }
         }
 
         // 解析 positions 数组
-        size_t positionsStart = json.find("\"positions\": [");
+        const std::string positionsPattern = "\"positions\": [";
+        size_t positionsStart = json.find(positionsPattern);
         if (positionsStart != std::string::npos) {
             size_t positionsEnd = json.find("]", positionsStart);
             if (positionsEnd != std::string::npos) {
-                std::string positionsArray = json.substr(positionsStart + 15, positionsEnd - (positionsStart + 15));
+                std::string positionsArray = json.substr(positionsStart + positionsPattern.length(),
+                                                         positionsEnd - (positionsStart + positionsPattern.length()));
 
                 // 解析每个 position 对象
                 size_t pos = 0;
@@ -262,40 +301,50 @@ bool SnapshotManager::deserializeSnapshot(const std::string& json, DesktopLayout
                         continue;
                     }
 
-                    // 解析 displayName
-                    size_t displayNameStart = positionsArray.find("\"displayName\": \"", pos);
+                    // 解析 displayName - 使用pattern.length()避免硬编码
+                    const std::string displayNamePattern = "\"displayName\": \"";
+                    size_t displayNameStart = positionsArray.find(displayNamePattern, pos);
                     if (displayNameStart == std::string::npos) { pos++; continue; }
-                    size_t displayNameEnd = positionsArray.find("\"", displayNameStart + 17);
+                    size_t displayNameValueStart = displayNameStart + displayNamePattern.length();
+                    size_t displayNameEnd = positionsArray.find("\"", displayNameValueStart);
                     if (displayNameEnd == std::string::npos) { pos++; continue; }
-                    std::string displayName = positionsArray.substr(displayNameStart + 17, displayNameEnd - (displayNameStart + 17));
+                    std::string displayName = positionsArray.substr(displayNameValueStart, displayNameEnd - displayNameValueStart);
 
-                    // 解析 parsingName
-                    size_t parsingNameStart = positionsArray.find("\"parsingName\": \"", displayNameEnd);
+                    // 解析 parsingName - 使用pattern.length()避免硬编码（关键修复）
+                    const std::string parsingNamePattern = "\"parsingName\": \"";
+                    size_t parsingNameStart = positionsArray.find(parsingNamePattern, displayNameEnd);
                     if (parsingNameStart == std::string::npos) { pos = displayNameEnd + 1; continue; }
-                    size_t parsingNameEnd = positionsArray.find("\"", parsingNameStart + 17);
+                    size_t parsingNameValueStart = parsingNameStart + parsingNamePattern.length();
+                    size_t parsingNameEnd = positionsArray.find("\"", parsingNameValueStart);
                     if (parsingNameEnd == std::string::npos) { pos = parsingNameStart + 1; continue; }
-                    std::string parsingName = positionsArray.substr(parsingNameStart + 17, parsingNameEnd - (parsingNameStart + 17));
+                    std::string parsingName = positionsArray.substr(parsingNameValueStart, parsingNameEnd - parsingNameValueStart);
 
                     // 解析 originalPosition.x
-                    size_t xPosStart = positionsArray.find("\"x\": ", parsingNameEnd);
+                    const std::string xPattern = "\"x\": ";
+                    size_t xPosStart = positionsArray.find(xPattern, parsingNameEnd);
                     if (xPosStart == std::string::npos) { pos = parsingNameEnd + 1; continue; }
-                    size_t xPosEnd = positionsArray.find(",", xPosStart);
+                    size_t xValueStart = xPosStart + xPattern.length();
+                    size_t xPosEnd = positionsArray.find(",", xValueStart);
                     if (xPosEnd == std::string::npos) { pos = xPosStart + 1; continue; }
-                    std::string xStr = positionsArray.substr(xPosStart + 5, xPosEnd - (xPosStart + 5));
+                    std::string xStr = positionsArray.substr(xValueStart, xPosEnd - xValueStart);
 
                     // 解析 originalPosition.y
-                    size_t yPosStart = positionsArray.find("\"y\": ", xPosEnd);
+                    const std::string yPattern = "\"y\": ";
+                    size_t yPosStart = positionsArray.find(yPattern, xPosEnd);
                     if (yPosStart == std::string::npos) { pos = xPosEnd + 1; continue; }
-                    size_t yPosEnd = positionsArray.find("}", yPosStart);
+                    size_t yValueStart = yPosStart + yPattern.length();
+                    size_t yPosEnd = positionsArray.find("}", yValueStart);
                     if (yPosEnd == std::string::npos) { pos = yPosStart + 1; continue; }
-                    std::string yStr = positionsArray.substr(yPosStart + 5, yPosEnd - (yPosStart + 5));
+                    std::string yStr = positionsArray.substr(yValueStart, yPosEnd - yValueStart);
 
-                    // 解析 category
-                    size_t categoryStart = positionsArray.find("\"category\": \"", yPosEnd);
+                    // 解析 category - 使用pattern.length()避免硬编码
+                    const std::string categoryPattern = "\"category\": \"";
+                    size_t categoryStart = positionsArray.find(categoryPattern, yPosEnd);
                     if (categoryStart == std::string::npos) { pos = yPosEnd + 1; continue; }
-                    size_t categoryEnd = positionsArray.find("\"", categoryStart + 14);
+                    size_t categoryValueStart = categoryStart + categoryPattern.length();
+                    size_t categoryEnd = positionsArray.find("\"", categoryValueStart);
                     if (categoryEnd == std::string::npos) { pos = categoryStart + 1; continue; }
-                    std::string category = positionsArray.substr(categoryStart + 14, categoryEnd - (categoryStart + 14));
+                    std::string category = positionsArray.substr(categoryValueStart, categoryEnd - categoryValueStart);
 
                     // 创建 DesktopIconPositionSnapshot
                     POINT position;
@@ -314,11 +363,19 @@ bool SnapshotManager::deserializeSnapshot(const std::string& json, DesktopLayout
             }
         }
 
-        Logger::getInstance().info(
+        // DEBUG日志：打印前5个反序列化的parsingName用于验证未截断
+        Logger::getInstance().debug(
             "SnapshotManager: 反序列化完成 - 时间: %s, 图标数: %zu",
             snapshot.timestamp.c_str(),
             snapshot.totalCount
         );
+        size_t debugCount = std::min(size_t(5), snapshot.positions.size());
+        for (size_t i = 0; i < debugCount; ++i) {
+            Logger::getInstance().debug(
+                "SnapshotManager: DEBUG - parsingName[%zu] = '%s'",
+                i, snapshot.positions[i].parsingName.c_str()
+            );
+        }
 
         return true;
     } catch (const std::exception& e) {

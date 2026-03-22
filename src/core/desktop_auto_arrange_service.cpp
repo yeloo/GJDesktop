@@ -380,37 +380,73 @@ DesktopLayoutSnapshot DesktopAutoArrangeService::createPositionSnapshot(
     snapshot.timestamp = timeBuffer;
 
     // 保存每个图标的位置
-    size_t skippedCount = 0;  // 因 parsingName 为空而跳过的图标数
+    size_t skippedCount = 0;  // 因 parsingName 异常而跳过的图标数
+    size_t formatErrorCount = 0;  // 因 parsingName 格式错误而跳过的图标数
     for (const auto& icon : icons) {
-        if (!icon.identity.parsingName.empty()) {
-            snapshot.positions.push_back(DesktopIconPositionSnapshot(
-                icon.identity.displayName,
-                icon.identity.parsingName,
-                icon.currentPosition,
-                icon.category
-            ));
-        } else {
+        // 基础检查：parsingName非空
+        if (icon.identity.parsingName.empty()) {
             skippedCount++;
             Logger::getInstance().warning(
                 "DesktopAutoArrangeService: 跳过图标 '%s' - parsingName 为空，可能是虚拟项或特殊图标",
                 icon.identity.displayName.c_str()
             );
+            continue;
         }
+
+        // 格式检查：文件系统项parsingName应该匹配有效的Windows路径格式
+        // 匹配盘符路径：C:\, D:\ 等
+        // 或UNC路径：\\server\share
+        bool validFormat = false;
+        if (icon.identity.parsingName.length() >= 3) {
+            // 盘符路径检查：C:\ 或 D:\ 等
+            if (isalpha(icon.identity.parsingName[0]) &&
+                icon.identity.parsingName[1] == ':' &&
+                icon.identity.parsingName[2] == '\\') {
+                validFormat = true;
+            }
+        }
+        if (!validFormat && icon.identity.parsingName.length() >= 2) {
+            // UNC路径检查：\\
+            if (icon.identity.parsingName[0] == '\\' && icon.identity.parsingName[1] == '\\') {
+                validFormat = true;
+            }
+        }
+
+        if (!validFormat) {
+            formatErrorCount++;
+            Logger::getInstance().warning(
+                "DesktopAutoArrangeService: 跳过图标 '%s' - parsingName 格式无效: '%s'，应为盘符路径或UNC路径",
+                icon.identity.displayName.c_str(),
+                icon.identity.parsingName.c_str()
+            );
+            continue;
+        }
+
+        // 所有检查通过，添加到快照
+        snapshot.positions.push_back(DesktopIconPositionSnapshot(
+            icon.identity.displayName,
+            icon.identity.parsingName,
+            icon.currentPosition,
+            icon.category
+        ));
     }
 
     snapshot.totalCount = snapshot.positions.size();
 
     Logger::getInstance().info(
-        "DesktopAutoArrangeService: 位置快照创建完成 - 保存 %zu 个图标位置（跳过 %zu 个）",
+        "DesktopAutoArrangeService: 位置快照创建完成 - 保存 %zu 个图标位置（跳过 %zu 个空parsingName，%zu 个格式错误）",
         snapshot.totalCount,
-        skippedCount
+        skippedCount,
+        formatErrorCount
     );
 
     // 如果跳过了太多图标，记录警告
-    if (skippedCount > 0) {
+    if (skippedCount > 0 || formatErrorCount > 0) {
         Logger::getInstance().warning(
-            "DesktopAutoArrangeService: 警告 - 跳过了 %zu 个图标（parsingName 为空），这些图标将不会被保存到快照中",
-            skippedCount
+            "DesktopAutoArrangeService: 警告 - 跳过了 %zu 个图标（%zu 个空parsingName，%zu 个格式错误），这些图标将不会被保存到快照中",
+            skippedCount + formatErrorCount,
+            skippedCount,
+            formatErrorCount
         );
     }
 
