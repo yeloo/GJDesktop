@@ -54,16 +54,29 @@ bool DesktopIconWriter::writeUsingCOMInterface(
     LPITEMIDLIST pidl = nullptr;
     DWORD dwAttributes = 0;
 
+    // 【诊断】详细记录 parsingName 内容和长度
+    Logger::getInstance().debug(
+        "DesktopIconWriter: 准备解析 parsingName - 长度: %zu, 内容: '%s'",
+        identity.parsingName.length(),
+        identity.parsingName.c_str()
+    );
+
     // 将 UTF-8 parsingName 转换为 UTF-16
     int wideLen = MultiByteToWideChar(CP_UTF8, 0, identity.parsingName.c_str(), -1, nullptr, 0);
     if (wideLen <= 0) {
-        errorMessage = "parsingName 转换为 UTF-16 失败";
-        Logger::getInstance().error("DesktopIconWriter: %s", errorMessage.c_str());
+        DWORD err = GetLastError();
+        errorMessage = "parsingName 转换为 UTF-16 失败 (错误码: " + std::to_string(err) + ")";
+        Logger::getInstance().error("DesktopIconWriter: %s, parsingName: '%s'", errorMessage.c_str(), identity.parsingName.c_str());
         return false;
     }
 
     std::wstring wideParsingName(wideLen - 1, L'\0');
     MultiByteToWideChar(CP_UTF8, 0, identity.parsingName.c_str(), -1, &wideParsingName[0], wideLen);
+
+    Logger::getInstance().debug(
+        "DesktopIconWriter: parsingName UTF-16 转换完成 - 宽字符长度: %d",
+        wideLen
+    );
 
     hr = pDesktopFolder->ParseDisplayName(
         nullptr,           // hwndOwner (nullptr 表示无父窗口)
@@ -173,23 +186,52 @@ bool DesktopIconWriter::writeUsingCOMInterface(
     POINT pt = targetPosition;
     LPCITEMIDLIST pidlArray[1] = { pidl };
 
+    Logger::getInstance().debug(
+        "DesktopIconWriter: 调用 SelectAndPositionItems - 目标位置: (%d, %d), PIDL: 0x%p",
+        targetPosition.x,
+        targetPosition.y,
+        (void*)pidl
+    );
+
     hr = pFolderView->SelectAndPositionItems(1, pidlArray, &pt, SVSI_SELECT | SVSI_ENSUREVISIBLE | SVSI_POSITIONITEM);
-    if (SUCCEEDED(hr)) {
+
+    Logger::getInstance().info(
+        "DesktopIconWriter: SelectAndPositionItems 返回 - displayName: '%s', HRESULT: 0x%08X (%s), 目标位置: (%d, %d)",
+        identity.displayName.c_str(),
+        hr,
+        (hr == S_OK ? "S_OK" : (hr == S_FALSE ? "S_FALSE" : "失败")),
+        targetPosition.x,
+        targetPosition.y
+    );
+
+    // 【关键修复】只有 hr == S_OK 才算真正成功
+    // SUCCEEDED() 宏包含 S_FALSE (HRESULT 0x00000001)，这会导致假成功
+    if (hr == S_OK) {
         Logger::getInstance().info(
-            "DesktopIconWriter: SelectAndPositionItems 成功 - displayName: '%s', position: (%d, %d)",
+            "DesktopIconWriter: ✅ SelectAndPositionItems 成功 - displayName: '%s', position: (%d, %d)",
             identity.displayName.c_str(),
             targetPosition.x,
             targetPosition.y
         );
         return true;
+    } else if (hr == S_FALSE) {
+        errorMessage = "SelectAndPositionItems 返回 S_FALSE（部分成功或被忽略）";
+        Logger::getInstance().error(
+            "DesktopIconWriter: ⚠️ %s - displayName: '%s', parsingName: '%s', 这可能意味着桌面布局模式不匹配",
+            errorMessage.c_str(),
+            identity.displayName.c_str(),
+            identity.parsingName.c_str()
+        );
+        return false;
     }
 
     // 如果方法失败
-    errorMessage = "无法设置图标位置 (SelectAndPositionItems 失败)";
+    errorMessage = "无法设置图标位置 (SelectAndPositionItems 失败, HRESULT: 0x" + std::to_string(hr) + ")";
     Logger::getInstance().error(
-        "DesktopIconWriter: %s - displayName: '%s', HRESULT: 0x%08X",
+        "DesktopIconWriter: ❌ %s - displayName: '%s', parsingName: '%s', HRESULT: 0x%08X",
         errorMessage.c_str(),
         identity.displayName.c_str(),
+        identity.parsingName.c_str(),
         hr
     );
 
