@@ -270,6 +270,12 @@ AutoArrangeResult DesktopAutoArrangeService::arrangeDesktop() {
 
         if (success) {
             result.movedIcons++;
+            Logger::getInstance().debug(
+                "DesktopAutoArrangeService: 移动图标 '%s' 成功到 (%d, %d)",
+                target.identity.displayName.c_str(),
+                target.targetPosition.x,
+                target.targetPosition.y
+            );
         } else {
             result.failedIcons++;
 
