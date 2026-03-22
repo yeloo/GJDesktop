@@ -42,7 +42,11 @@ bool DesktopIconWriter::writeUsingCOMInterface(
     hr = SHGetDesktopFolder(&pDesktopFolder);
     if (FAILED(hr) || !pDesktopFolder) {
         errorMessage = "无法获取桌面 Shell Folder";
-        Logger::getInstance().error("DesktopIconWriter: %s, HRESULT: 0x%08X", errorMessage.c_str(), hr);
+        Logger::getInstance().error(
+            "DesktopIconWriter: %s, HRESULT: 0x%08lX",
+            errorMessage.c_str(),
+            hr
+        );
         return false;
     }
 
@@ -88,8 +92,15 @@ bool DesktopIconWriter::writeUsingCOMInterface(
     );
 
     if (FAILED(hr) || !pidl) {
-        errorMessage = "无法将 parsingName 转换为 PIDL, HRESULT: 0x%08X";
-        Logger::getInstance().error(errorMessage.c_str(), hr);
+        char errorBuffer[256];
+        snprintf(errorBuffer, sizeof(errorBuffer), "无法将 parsingName 转换为 PIDL, HRESULT: 0x%08lX", hr);
+        errorMessage = errorBuffer;
+        Logger::getInstance().error(
+            "DesktopIconWriter: %s - displayName: '%s', parsingName: '%s'",
+            errorMessage.c_str(),
+            identity.displayName.c_str(),
+            identity.parsingName.c_str()
+        );
         return false;
     }
 
@@ -106,8 +117,10 @@ bool DesktopIconWriter::writeUsingCOMInterface(
     CComPtr<IShellWindows> pShellWindows;
     hr = CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&pShellWindows));
     if (FAILED(hr) || !pShellWindows) {
-        errorMessage = "无法创建 IShellWindows, HRESULT: 0x%08X";
-        Logger::getInstance().error(errorMessage.c_str(), hr);
+        char errorBuffer[256];
+        snprintf(errorBuffer, sizeof(errorBuffer), "无法创建 IShellWindows, HRESULT: 0x%08lX", hr);
+        errorMessage = errorBuffer;
+        Logger::getInstance().error("DesktopIconWriter: %s", errorMessage.c_str());
         return false;
     }
 
@@ -117,8 +130,10 @@ bool DesktopIconWriter::writeUsingCOMInterface(
     long hwndCount = 0;
     hr = pShellWindows->get_Count(&hwndCount);
     if (FAILED(hr)) {
-        errorMessage = "无法获取窗口数量, HRESULT: 0x%08X";
-        Logger::getInstance().error(errorMessage.c_str(), hr);
+        char errorBuffer[256];
+        snprintf(errorBuffer, sizeof(errorBuffer), "无法获取窗口数量, HRESULT: 0x%08lX", hr);
+        errorMessage = errorBuffer;
+        Logger::getInstance().error("DesktopIconWriter: %s", errorMessage.c_str());
         return false;
     }
 
@@ -196,7 +211,7 @@ bool DesktopIconWriter::writeUsingCOMInterface(
     hr = pFolderView->SelectAndPositionItems(1, pidlArray, &pt, SVSI_SELECT | SVSI_ENSUREVISIBLE | SVSI_POSITIONITEM);
 
     Logger::getInstance().info(
-        "DesktopIconWriter: SelectAndPositionItems 返回 - displayName: '%s', HRESULT: 0x%08X (%s), 目标位置: (%d, %d)",
+        "DesktopIconWriter: SelectAndPositionItems 返回 - displayName: '%s', HRESULT: 0x%08lX (%s), 目标位置: (%d, %d)",
         identity.displayName.c_str(),
         hr,
         (hr == S_OK ? "S_OK" : (hr == S_FALSE ? "S_FALSE" : "失败")),
@@ -226,13 +241,14 @@ bool DesktopIconWriter::writeUsingCOMInterface(
     }
 
     // 如果方法失败
-    errorMessage = "无法设置图标位置 (SelectAndPositionItems 失败, HRESULT: 0x" + std::to_string(hr) + ")";
+    char errorBuffer[512];
+    snprintf(errorBuffer, sizeof(errorBuffer), "无法设置图标位置 (SelectAndPositionItems 失败, HRESULT: 0x%08lX)", hr);
+    errorMessage = errorBuffer;
     Logger::getInstance().error(
-        "DesktopIconWriter: ❌ %s - displayName: '%s', parsingName: '%s', HRESULT: 0x%08X",
+        "DesktopIconWriter: ❌ %s - displayName: '%s', parsingName: '%s'",
         errorMessage.c_str(),
         identity.displayName.c_str(),
-        identity.parsingName.c_str(),
-        hr
+        identity.parsingName.c_str()
     );
 
     return false;

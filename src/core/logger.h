@@ -46,15 +46,29 @@ public:
     void info(const std::string& message);
     void warning(const std::string& message);
     void error(const std::string& message);
-    
+
+    // 错误日志专用接口（写入到单独的错误日志文件）
+    template<typename... Args>
+    void logErrorFile(const char* format, Args... args) {
+        logToErrorFile(formatMessage(format, args...));
+    }
+
+    void logErrorFile(const std::string& message);
+
     // 设置日志输出路径
     void setLogPath(const std::string& path);
-    
+
+    // 设置错误日志文件路径
+    void setErrorLogPath(const std::string& path);
+
     // 设置日志级别
     void setLogLevel(LogLevel level);
-    
+
     // 获取日志文件路径
     std::string getLogPath() const;
+
+    // 获取错误日志文件路径
+    std::string getErrorLogPath() const;
 
 private:
     Logger();
@@ -102,8 +116,10 @@ private:
 
     // 成员变量
     std::string m_logPath;
+    std::string m_errorLogPath;
     LogLevel m_logLevel;
     std::ofstream m_logFile;
+    std::ofstream m_errorLogFile;
 };
 
 } // namespace ccdesk::core
