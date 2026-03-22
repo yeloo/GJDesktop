@@ -96,7 +96,10 @@ void TrayManager::createTrayMenu() {
 
     // 执行桌面自动整理（新增）
     m_executeArrangeAction = m_trayMenu->addAction(u8"执行桌面自动整理");
-    m_executeArrangeAction->setStyleSheet("QAction { color: #e74c3c; font-weight: bold; }");
+    // QAction 不支持 setStyleSheet，使用字体区分
+    QFont boldFont = m_executeArrangeAction->font();
+    boldFont.setBold(true);
+    m_executeArrangeAction->setFont(boldFont);
     connect(m_executeArrangeAction, &QAction::triggered, this, &TrayManager::onExecuteArrange);
 
     m_trayMenu->addSeparator();
