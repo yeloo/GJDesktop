@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <windows.h>
 
 namespace fs = std::filesystem;
 

@@ -4,7 +4,10 @@
 #include <string>
 #include <vector>
 
-// Windows SDK
+// Windows SDK — NOMINMAX 防止 max/min 宏覆盖 std::max/std::min
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 
 namespace ccdesk::core {

@@ -1,6 +1,7 @@
 #include "desktop_layout_planner.h"
 #include "logger.h"
 #include <sstream>
+#include <algorithm>
 #include <windows.h>
 
 namespace ccdesk::core {
