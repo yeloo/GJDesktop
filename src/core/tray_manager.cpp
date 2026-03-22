@@ -146,8 +146,10 @@ void TrayManager::onGenerateOrganizePlan() {
 void TrayManager::onGenerateLayoutPlan() {
     Logger::getInstance().info("TrayManager: 点击了'生成桌面布局规划'菜单项");
 
-    // 调用 AppManager 的 generateLayoutPlan 方法（规划/预演）
-    AppManager::getInstance().generateLayoutPlan();
+    if (m_mainWindow) {
+        // 发射信号给主窗口生成布局规划
+        QMetaObject::invokeMethod(m_mainWindow, "triggerLayoutFromTray", Qt::QueuedConnection);
+    }
 }
 
 void TrayManager::onShowSettings() {

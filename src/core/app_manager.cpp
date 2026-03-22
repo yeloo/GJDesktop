@@ -206,6 +206,10 @@ bool AppManager::initializeUI() {
         m_mainWindow->setConfigManager(m_configManager.get());
     }
     
+    if (m_autoArrangeService) {
+        m_mainWindow->setDesktopAutoArrangeService(m_autoArrangeService.get());
+    }
+    
     return m_mainWindow != nullptr;
 }
 

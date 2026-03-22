@@ -6,27 +6,70 @@
 #include <vector>
 #include <sstream>
 #include <QTimer>
+#include <QLabel>
+#include <QScrollArea>
+#include <QFrame>
+#include <QProgressBar>
 
 class QPushButton;
-class QLabel;
-class QDialog;
-class QListWidget;
+class QWidget;
+class QVBoxLayout;
+class QHBoxLayout;
 class QGridLayout;
-class QScrollArea;
+class QTabWidget;
+class QTextEdit;
+class QGroupBox;
+class QDialog;
 
 namespace ccdesk::core {
 class FileOrganizer;
 class TrayManager;
 class ConfigManager;
+class DesktopAutoArrangeService;
 struct OrganizePreviewItem;
 struct OrganizeSummary;
-struct OrganizeResult;
 struct OrganizePlan;
+struct LayoutPlanResult;
 } // namespace ccdesk::core
 
 namespace ccdesk::ui {
 
 class SettingsDialog;
+
+// 数据模型：文件整理结果展示项
+struct OrganizeResultItem {
+    QString fileName;
+    QString category;
+    QString status;  // "可归类" / "未匹配" / "冲突"
+    QString statusDetail;
+};
+
+// 数据模型：桌面布局规划结果展示项
+struct LayoutResultItem {
+    QString iconName;
+    QString category;
+    QString targetPosition;  // "(X, Y)"
+    QString status;  // "已规划"
+};
+
+// 数据模型：主窗口状态摘要
+struct MainWindowState {
+    // 文件整理模块状态
+    int fileTotalItems = 0;
+    int fileCategorizedItems = 0;
+    std::map<QString, int> fileCategoryCounts;  // category name -> count
+    
+    // 桌面布局模块状态
+    int iconTotalCount = 0;
+    int iconCategorizedCount = 0;
+    int iconPlannedCount = 0;
+    std::map<QString, int> iconCategoryCounts;
+    
+    // 最近操作结果
+    QString lastOperation;
+    QString lastOperationResult;  // "成功" / "失败"
+    QString lastOperationDetail;
+};
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -35,75 +78,108 @@ public:
     MainWindow(QWidget* parent = nullptr);
     ~MainWindow();
     
+    // 设置各模块引用
     void setFileOrganizer(ccdesk::core::FileOrganizer* organizer);
     void setTrayManager(ccdesk::core::TrayManager* trayManager);
     void setConfigManager(ccdesk::core::ConfigManager* configManager);
+    void setDesktopAutoArrangeService(ccdesk::core::DesktopAutoArrangeService* service);
 
 public slots:
     // 从托盘触发的槽
     void triggerOrganizeFromTray();
+    void triggerLayoutFromTray();
     void showSettingsDialog();
 
 private slots:
-    // 一键整理按钮
-    void onOrganizeClicked();
+    // 文件整理模块操作
+    void onGenerateFileOrganizePlan();
+    void onRefreshFileResults();
     
-    // 取消整理按钮
-    void onCancelOrganizeClicked();
+    // 桌面布局模块操作
+    void onGenerateLayoutPlan();
+    void onRefreshLayoutResults();
     
-    // 预览对话框确认按钮
-    void onPreviewConfirmed();
+    // 设置
+    void onShowSettings();
     
-    // 预览对话框取消按钮
-    void onPreviewCancelled();
+    // 定时更新日志摘要
+    void onUpdateLogSummary();
 
 protected:
-    // 改造关闭事件为隐藏到托盘
+    // 拦截关闭事件为隐藏到托盘
     void closeEvent(QCloseEvent* event) override;
 
 private:
-    // UI组件
-    QPushButton* m_organizeBtn;
-    QPushButton* m_settingsBtn;
-    QLabel* m_statusLabel;
-    
-    // 文件整理器指针
-    ccdesk::core::FileOrganizer* m_fileOrganizer;
-    ccdesk::core::TrayManager* m_trayManager;
-    ccdesk::core::ConfigManager* m_configManager;
-    
-    // 预览对话框
-    QDialog* m_previewDialog;
-    QListWidget* m_previewList;
-    QPushButton* m_confirmBtn;
-    QPushButton* m_cancelBtn;
-    
-    // 设置对话框
-    SettingsDialog* m_settingsDialog;
-    
-    // 整理状态
-    bool m_isOrganizing;  // 是否正在整理中
-    
-    // 初始化UI
+    // 初始化 UI
     void initializeUI();
     
-    // 显示预览对话框
-    void showPreviewDialog(const std::vector<ccdesk::core::OrganizePreviewItem>& items);
+    // 创建各个区域
+    QWidget* createStatusBar();
+    QWidget* createFileOrganizeSection();
+    QWidget* createLayoutSection();
+    QWidget* createLogSection();
+    QGroupBox* createFileStatsBox();
+    QGroupBox* createLayoutStatsBox();
     
-    // 显示结果报告
-    void showResultReport(const ccdesk::core::OrganizeSummary& summary);
+    // 更新状态栏
+    void updateStatusBar(const MainWindowState& state);
     
-    // 显示整理规划（最小可用规划器）
-    void showOrganizePlan(const ccdesk::core::OrganizePlan& plan);
+    // 显示文件整理规划结果
+    void showFileOrganizeResults(const MainWindowState& state);
+    
+    // 显示桌面布局规划结果
+    void showLayoutResults(const MainWindowState& state);
+    
+    // 更新日志摘要
+    void updateLogSummary();
+    
+    // 格式化文件整理结果项
+    OrganizeResultItem formatOrganizeResultItem(const ccdesk::core::OrganizePreviewItem& item) const;
+    
+    // 格式化布局结果项
+    LayoutResultItem formatLayoutResultItem(const ccdesk::core::LayoutPlanResult& result, size_t index) const;
+    
+    // 获取分类中文名称（从 IconCategory 枚举值）
+    QString getCategoryDisplayName(const QString& category) const;
     
     // 隐藏到托盘
     void hideToTray();
+
+    // 成员变量
+    ccdesk::core::FileOrganizer* m_fileOrganizer;
+    ccdesk::core::TrayManager* m_trayManager;
+    ccdesk::core::ConfigManager* m_configManager;
+    ccdesk::core::DesktopAutoArrangeService* m_autoArrangeService;
     
-    // 创建预览项文本（用于ListWidget显示）
-    QString formatPreviewItem(const ccdesk::core::OrganizePreviewItem& item) const;
+    MainWindowState m_state;
     
-    // 创建结果项文本（用于结果报告显示）
-    QString formatResultItem(const ccdesk::core::OrganizeResult& result) const;
+    // UI 组件
+    QLabel* m_fileTotalLabel;
+    QLabel* m_fileCategorizedLabel;
+    QLabel* m_fileStatsLabel;  // 分类统计显示
+    
+    QLabel* m_iconTotalLabel;
+    QLabel* m_iconCategorizedLabel;
+    QLabel* m_iconPlannedLabel;
+    QLabel* m_iconStatsLabel;  // 分类统计显示
+    
+    QTextEdit* m_fileResultList;
+    QTextEdit* m_layoutResultList;
+    QTextEdit* m_logSummary;
+    
+    QPushButton* m_generateFilePlanBtn;
+    QPushButton* m_refreshFileResultsBtn;
+    QPushButton* m_generateLayoutPlanBtn;
+    QPushButton* m_refreshLayoutResultsBtn;
+    QPushButton* m_settingsBtn;
+    
+    QTimer* m_logUpdateTimer;  // 定时更新日志摘要
+    
+    // 最近的文件整理规划结果
+    ccdesk::core::OrganizePlan m_lastFilePlan;
+    
+    // 最近的桌面布局规划结果
+    ccdesk::core::LayoutPlanResult m_lastLayoutPlan;
 };
 
 } // namespace ccdesk::ui

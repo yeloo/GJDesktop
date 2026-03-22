@@ -171,7 +171,11 @@ function Build-CCDesk {
 # 执行编译
 try {
     $result = Build-CCDesk
-    exit ($result -eq $true ? 0 : 1)
+    if ($result -eq $true) {
+        exit 0
+    } else {
+        exit 1
+    }
 } catch {
     Write-Status "Unexpected error: $_" "Error"
     exit 1
